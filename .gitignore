@@ -1,0 +1,25 @@
+# Maven / build output
+target/
+*.class
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Scala / SBT / Metals
+.bloop/
+.metals/
+.bsp/
+project/target/
+
+# Logs / sorties de tests
+*.log
+spark-warehouse/
+metastore_db/
+derby.log
+
+# OS
+.DS_Store
+Thumbs.db

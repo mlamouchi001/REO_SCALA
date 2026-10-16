@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.bsy.datalake</groupId>
+    <artifactId>bsy_reo</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>BSY_REO</name>
+    <description>
+        Migration Scala / Spark des chaines Talend REO du projet BSY_A2918 :
+        LUD_AJU_ORCHESTRATION_DELTA_REO (ajustements : dispatch, conso BV, GTS Skipper, fait dc_conso UV)
+        et LUD_MYREO_ORCHESTRATION_DATA_TO_SV (extractions de l'outil MyREO : raw vers SV en delta).
+    </description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <!-- Meme socle que EXP_ENG_FRG_SUV : Scala 2.12 / Spark 3.3 (les jobs Talend tournent en SPARK_3_3_x) -->
+        <scala.version>2.12.18</scala.version>
+        <scala.binary.version>2.12</scala.binary.version>
+        <spark.version>3.3.2</spark.version>
+        <typesafe.config.version>1.4.2</typesafe.config.version>
+        <scalatest.version>3.2.15</scalatest.version>
+        <!-- Rempli par le profil jdk9plus (Spark a besoin de add-opens sur JDK 9+) ; vide sous JDK 8 -->
+        <tests.jvm.args></tests.jvm.args>
+        <!-- SonarQube : rapports produits par le build -->
+        <sonar.sources>src/main/scala</sonar.sources>
+        <sonar.tests>src/test/scala</sonar.tests>
+        <sonar.scala.scalastyle.reportPaths>target/scalastyle-output.xml</sonar.scala.scalastyle.reportPaths>
+        <sonar.scala.coverage.reportPaths>target/scoverage.xml</sonar.scala.coverage.reportPaths>
+        <sonar.junit.reportPaths>target/surefire-reports</sonar.junit.reportPaths>
+        <sonar.coverage.exclusions>**/job/MainDriver*.scala</sonar.coverage.exclusions>
+    </properties>
+
+    <profiles>
+        <profile>
+            <id>jdk9plus</id>
+            <activation>
+                <jdk>[9,)</jdk>
+            </activation>
+            <properties>
+                <tests.jvm.args>--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.cs=ALL-UNNAMED --add-opens=java.base/sun.security.action=ALL-UNNAMED --add-opens=java.base/sun.util.calendar=ALL-UNNAMED -Djdk.reflect.useDirectMethodHandle=false</tests.jvm.args>
+            </properties>
+        </profile>
+        <!-- Couverture pour Sonar : mvn -P coverage scoverage:report (cf. jenkins/Jenkinsfile-*) -->
+        <profile>
+            <id>coverage</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.scoverage</groupId>
+                        <artifactId>scoverage-maven-plugin</artifactId>
+                        <version>2.0.1</version>
+                        <configuration>
+                            <scalaVersion>${scala.version}</scalaVersion>
+                            <aggregate>false</aggregate>
+                            <excludedPackages>com\.bsy\.datalake\.reo\.job</excludedPackages>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+    <dependencies>
+        <!-- Fournies par le cluster (spark-submit) : exclues du fat jar -->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>${scala.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_${scala.binary.version}</artifactId>
+            <version>${spark.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Embarquee dans le fat jar -->
+        <dependency>
+            <groupId>com.typesafe</groupId>
+            <artifactId>config</artifactId>
+            <version>${typesafe.config.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.scalatest</groupId>
+            <artifactId>scalatest_${scala.binary.version}</artifactId>
+            <version>${scalatest.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <sourceDirectory>src/main/scala</sourceDirectory>
+        <testSourceDirectory>src/test/scala</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>net.alchim31.maven</groupId>
+                <artifactId>scala-maven-plugin</artifactId>
+                <version>4.8.1</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>testCompile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <scalaVersion>${scala.version}</scalaVersion>
+                    <args>
+                        <arg>-target:jvm-1.8</arg>
+                        <arg>-deprecation</arg>
+                        <arg>-feature</arg>
+                        <arg>-unchecked</arg>
+                    </args>
+                </configuration>
+            </plugin>
+
+            <!-- Surefire ne lance pas ScalaTest : on le desactive et on utilise scalatest-maven-plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.1.2</version>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.scalatest</groupId>
+                <artifactId>scalatest-maven-plugin</artifactId>
+                <version>2.2.0</version>
+                <configuration>
+                    <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
+                    <junitxml>.</junitxml>
+                    <filereports>TestSuite.txt</filereports>
+                    <argLine>${tests.jvm.args} -Dfile.encoding=UTF-8</argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>test</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Rapport scalastyle pour Sonar (ne bloque pas le build) -->
+            <plugin>
+                <groupId>org.scalastyle</groupId>
+                <artifactId>scalastyle-maven-plugin</artifactId>
+                <version>1.0.0</version>
+                <configuration>
+                    <verbose>false</verbose>
+                    <failOnViolation>false</failOnViolation>
+                    <failOnWarning>false</failOnWarning>
+                    <includeTestSourceDirectory>false</includeTestSourceDirectory>
+                    <sourceDirectory>${project.basedir}/src/main/scala</sourceDirectory>
+                    <configLocation>${project.basedir}/scalastyle-config.xml</configLocation>
+                    <outputFile>${project.build.directory}/scalastyle-output.xml</outputFile>
+                    <outputEncoding>UTF-8</outputEncoding>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              1. fat jar (jar-with-dependencies) : celui que l'on passe a spark-submit
+              2. bundle zip (comme le template) : fat jar + conf de reference, pour le deploiement Ansible
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>fat-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>assembly/jar-with-dependencies.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bundle</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>assembly/bundle.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

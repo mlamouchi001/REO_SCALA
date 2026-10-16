@@ -1,0 +1,137 @@
+// =====================================================================================================
+// Pipeline SG (dev) de BSY_REO (chaines AJUST et MYREO) : repris du template FDA_TEMPLATE_PROJECT_SCALA (librairie
+// partagee baseHadoopTemplate / ansibleTowerDeploy), avec deux corrections :
+//   - les resultats de tests publies sont les rapports JUnit de ScalaTest (le template publiait
+//     scoverage.xml comme resultat JUnit) ;
+//   - la couverture est produite par le profil Maven "coverage" et le rapport scalastyle par le build.
+// A renseigner avec l'equipe CI : modele de job Ansible Tower et cle Sonar (variables ci-dessous). Si le
+// playbook accepte une liste de fichiers application_conf, un seul appel Tower suffit (stage deploy to edge).
+// =====================================================================================================
+
+// -*-*-*-* pipeline variables *-*-*-*-
+def skipNexusDeploy = false
+def skipLucidDeploy = env.SKIP_DEPLOY_TO_LUCID == "true"
+def projectName = "BSY_REO"
+def skipTagPush = true
+def mavenReleaseProfile = ''
+def sonarProjectKey = env.SONAR_PROJECT_KEY ?: "com.bsy.datalake:bsy_reo"
+def pomVersion
+def towerJobTemplate = env.TOWER_JOB_TEMPLATE ?: "JOB_LUD_DEV_BSY_A2918_SCALA_SPARK_DEPLOY"
+def version = env.PROJECT_VERSION ? env.PROJECT_VERSION : getMavenPomVersion("pom.xml")
+def towerExtraVars = "env=dev irt_trigram=bsy_a2918 app_config=app/bsy_a2918/scala project_name=${projectName} project_version=${env.PROJECT_VERSION}-SNAPSHOT jar_name=bsy_reo-${env.PROJECT_VERSION}-SNAPSHOT-jar-with-dependencies project_group_id=com.bsy.datalake"
+// Un fichier de configuration par driver : reo_ajust.conf (MainDriverAjustReo) et reo_myreo.conf (MainDriverMyReo).
+// CONF_FILE_NAMES (liste separee par des virgules) permet de n'en redeployer qu'un.
+def confFileNames = (env.CONF_FILE_NAMES ?: env.CONF_FILE_NAME ?: 'reo_ajust.conf,reo_myreo.conf').split(',')
+def towerHost = "awx.world.socgen"
+def towerCredentialId = "jenkins_bsy"
+def towerTemplateType = null
+
+// gitflow : main/master, release/*, hotfix/*
+def isReleaseProcess() {
+  def releaseBranchPattern = ~/(?i)^.*(main|master|release\/.*|hotfix\/.*)$/
+  def stableBranchPattern = ~/(?i)^.*(main|master)$/
+  return (env.BRANCH_NAME ==~ releaseBranchPattern || env.CHANGE_TARGET ==~ stableBranchPattern)
+}
+
+def isStableBranch() {
+  def stableBranchPattern = ~/(?i)^.*(main|master)$/
+  return (env.BRANCH_NAME ==~ stableBranchPattern)
+}
+
+// -*-*-*-* pipeline to execute *-*-*-*-
+baseHadoopTemplate() {
+
+  stage('Checkout scm') {
+    container("build") {
+      // entrypoint : evite les problemes hadoop dans les tests
+      sh "/usr/local/bin/entrypoint"
+      checkout scm
+    }
+  }
+
+  def pom = readMavenPom file: "./pom.xml"
+  pomVersion = pom?.version
+  currentBuild.displayName = "${currentBuild.displayName} - ${projectName} - ${pomVersion}"
+
+  stage('init and controls') {
+    container("build") {
+      if (isReleaseProcess()) {
+        mavenReleaseProfile = '-P release'
+      }
+      if (isStableBranch() && isReleaseProcess()) {
+        skipNexusDeploy = false
+        skipTagPush = false
+      }
+      if (skipTagPush == false) {
+        gitTag = sh(returnStdout: true, script: "git tag --list '${pomVersion}'").trim()
+        if (gitTag == pomVersion) {
+          error("The git tag ${pomVersion} already exist. You should change the version in your pom.xml.")
+        }
+      }
+      sh("mvn -B -f pom.xml clean validate ${mavenReleaseProfile}")
+    }
+  }
+
+  stage('package (sans tests)') {
+    container("build") {
+      // produit le fat jar, le bundle zip et target/scalastyle-output.xml
+      sh("mvn -B -f pom.xml package -DskipTests=true")
+    }
+  }
+
+  stage('tests avec couverture') {
+    container("build") {
+      sh("mvn -B -f pom.xml -P coverage scoverage:report")
+      junit allowEmptyResults: false, testResults: "**/target/surefire-reports/*.xml"
+    }
+  }
+
+  stage('SonarQube - Analysis') {
+    container("sonar-container") {
+      withSonarQubeEnv(installationName: 'sonarqube', credentialsId: 'SONAR_CRED_ID') {
+        if (env.CHANGE_ID) {
+          sh("mvn -B -f ./pom.xml sonar:sonar -P sonar -Dsonar.projectKey=${sonarProjectKey} -Dsonar.pullrequest.branch=${env.CHANGE_BRANCH} -Dsonar.pullrequest.key=${env.CHANGE_ID} -Dsonar.pullrequest.base=${env.CHANGE_TARGET}")
+        } else {
+          sh("mvn -B -f ./pom.xml sonar:sonar -P sonar -Dsonar.projectKey=${sonarProjectKey} -Dsonar.branch.name=${env.REF_GIT}")
+        }
+      }
+    }
+  }
+
+  stage('Quality Gate') {
+    timeout(time: 10, unit: 'MINUTES') {
+      def qg = waitForQualityGate()
+      if (qg.status != 'OK') {
+        error "Pipeline aborted due to quality gate failure: ${qg.status}"
+      }
+    }
+  }
+
+  stage('deploy to nexus') {
+    container("build") {
+      if (skipNexusDeploy) {
+        echo 'no deployment done to Nexus'
+        org.jenkinsci.plugins.pipeline.modeldefinition.Utils.markStageSkippedForConditional('deploy to nexus')
+      } else {
+        sh("mvn -B -f pom.xml deploy -DskipTests=true")
+      }
+    }
+  }
+
+  stage('deploy to edge') {
+    container("build") {
+      if (skipLucidDeploy) {
+        echo 'no deployment done to Lucid'
+      } else {
+        // Le modele Tower depose un seul fichier application_conf par appel : un appel par fichier de
+        // configuration. Le jar, identique, est redepose a chaque appel.
+        for (String confFileName : confFileNames) {
+          def confFile = confFileName.trim()
+          echo "Deploying ${projectName} (${confFile}) with job template ${towerJobTemplate} in version ${version}"
+          ansibleTowerDeploy(towerJobTemplate, version, "${towerExtraVars} application_conf=${confFile}",
+                             towerCredentialId, towerHost, towerTemplateType)
+        }
+      }
+    }
+  }
+}
