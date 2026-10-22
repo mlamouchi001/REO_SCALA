@@ -17,7 +17,7 @@ Ce document décrit la cible des trois chaînes Talend migrées dans le projet `
 
 | Élément | Commun | AJUST | MYREO | COVID |
 |---|---|---|---|---|
-| Driver | | `job.MainDriverAjustReo` | `job.MainDriverMyReo` | `job.MainDriverCovidReo` |
+| Driver | | `job.MainDriverAjustReo` | `job.MainDriverMyReo` | `job.MainDriverReo` |
 | Sources | `utility.Utils` (lecteurs) | `common.FetchSourceAjustReo` | `common.FetchSourceMyReo` | `common.FetchSourceCovidReo` |
 | Runner | `common.AbstractMapperProvider` | `common.AbstractPrimaryAjustReo`, `common.AjustReoRunner` | `common.AbstractPrimaryMyReo`, `common.MyReoRunner` | `common.AbstractPrimaryCovidReo`, `common.CovidReoRunner` |
 | Mappers | | `mapping.MainMapperAjust*` | `mapping.MainMapperMyReo*` | `mapping.MainMapperCovid*`, et `MainMapperAjustConsoArch` réutilisé |
@@ -163,7 +163,7 @@ SQL Server : `MssqlGateway` porte les trois opérations des jobs Talend (procéd
 
 | Classe | Rôle | Équivalent template / EXP_ENG_FRG_SUV |
 |---|---|---|
-| `job.MainDriverAjustReo`, `job.MainDriverMyReo`, `job.MainDriverCovidReo` | Point d'entrée d'une chaîne, orchestration des étapes, `run` testable | `MainDriver`, `MainDriverUV`, `MainDriverSUV` |
+| `job.MainDriverAjustReo`, `job.MainDriverMyReo`, `job.MainDriverReo` | Point d'entrée d'une chaîne, orchestration des étapes, `run` testable | `MainDriver`, `MainDriverUV`, `MainDriverSUV` |
 | `common.SparkSessionManager` | Session Spark, AQE, paramètres SQL par environnement | identique |
 | `common.FetchSourceAjustReo`, `common.FetchSourceMyReo` | Une lazy val par source, options de lecture issues de la configuration | `FetchSource`, `FetchSourceUV` |
 | `common.AbstractPrimaryAjustReo`, `common.AbstractPrimaryMyReo` | Exposent les sources, déclarent un traitement par sous-job | `AbstractPrimary`, `AbstractPrimaryUV` |
@@ -182,7 +182,7 @@ SQL Server : `MssqlGateway` porte les trois opérations des jobs Talend (procéd
 | `utility.MyReoFileCatalog` | Listing du dépôt MyREO, liste des candidats, historique des fichiers lus | nouveau |
 | `utility.MyReoRules` | `SG_NumberUtils.toDouble` en UDF | nouveau |
 | `utility.DataQuality` | Contrôles bloquants (`superphase_id`, `is_active`), alertes de doublons | nouveau |
-| `job.MainDriverCovidReo` | Chaîne COVID : 17 étapes, accès SQL Server injectable | `MainDriver` |
+| `job.MainDriverReo` | Chaîne COVID : 17 étapes, accès SQL Server injectable | `MainDriver` |
 | `mapping.VentilLayout`, `mapping.MainMapperCovidVentilation` | Ventilation commune aux deux jobs de calcul, paramétrée par la disposition des colonnes | nouveau |
 | `utility.CovidRules` | `BigDecimal.multiply(x, DECIMAL64 / DECIMAL32)`, `Integer.parseInt`, `parseTo_Double` en UDF | nouveau |
 | `utility.MssqlGateway`, `JdbcMssqlGateway`, `MssqlSettings` | Procédures, lecture et insertion SQL Server ; paramètres par environnement, mot de passe lu dans un magasin Hadoop | remplace tMSSqlConnection, tMSSqlSP, tMSSqlInput, tMSSqlOutput |
@@ -307,7 +307,7 @@ Chaque driver a son fichier de configuration, déposé sur HDFS et passé en 2e 
 |---|---|---|
 | `conf/reo_ajust.conf` | `MainDriverAjustReo` | 12 racines, interrupteurs AJUST, `on_missing_archive`, `timezone`, `output_partitions`, tables AJUST, CONSO, LK et DIM |
 | `conf/reo_myreo.conf` | `MainDriverMyReo` | 4 racines : `raw`, `sv_reo`, `erk_sv`, `wp_reo` ; interrupteurs MYREO, `myreo_on_missing_ref`, tables MYREO |
-| `conf/reo_covid.conf` | `MainDriverCovidReo` | 12 racines (dont `erk_sv_reo`, la racine SV ERK de la table NRG -> PCI) ; 15 interrupteurs ; connexion SQL Server par environnement ; tables COVID, et tables LK, DIM, YEAR_MAPPING identiques à AJUST |
+| `conf/reo_covid.conf` | `MainDriverReo` | 12 racines (dont `erk_sv_reo`, la racine SV ERK de la table NRG -> PCI) ; 15 interrupteurs ; connexion SQL Server par environnement ; tables COVID, et tables LK, DIM, YEAR_MAPPING identiques à AJUST |
 
 Les trois fichiers ont la même structure, lue par la même classe `ReoConf` :
 

@@ -3,7 +3,7 @@
 # Lancement d'une chaine REO : remplace les scripts *_run.sh des jobs Talend
 #   ajust : LUD_AJU_ORCHESTRATION_DELTA_REO     -> com.bsy.datalake.reo.job.MainDriverAjustReo
 #   myreo : LUD_MYREO_ORCHESTRATION_DATA_TO_SV  -> com.bsy.datalake.reo.job.MainDriverMyReo
-#   covid : LUD_FLOW_AJUSTEMENT_REO_COVID       -> com.bsy.datalake.reo.job.MainDriverCovidReo
+#   covid : LUD_FLOW_AJUSTEMENT_REO_COVID       -> com.bsy.datalake.reo.job.MainDriverReo
 #
 # Usage : run_reo.sh <chaine> <env> <conf_hdfs> [--conf spark.x=y ...]
 #   chaine    : ajust | myreo | covid
@@ -49,7 +49,7 @@ case "$CHAIN" in
     CLASS="com.bsy.datalake.reo.job.MainDriverMyReo"
     DRIVER_MEM="2g"; DRIVER_CORES=1; EXEC_CORES=2; EXEC_MEM="2g"; PARALLELISM=4 ;;
   covid)
-    CLASS="com.bsy.datalake.reo.job.MainDriverCovidReo"
+    CLASS="com.bsy.datalake.reo.job.MainDriverReo"
     DRIVER_MEM="16g"; DRIVER_CORES=4; EXEC_CORES=4 ;;
   *) echo "Chaine inconnue : $CHAIN" >&2; exit 2 ;;
 esac

@@ -43,7 +43,7 @@ class FakeMssqlGateway(ajustments: () => DataFrame, procResults: Map[String, Pro
  * conf/reo_covid.conf (seules les racines de l'environnement de test "tu" sont ajoutees) et une base SQL Server
  * simulee.
  */
-class MainDriverCovidReoSpec extends AnyFlatSpec with Matchers with SparkTestBase with BeforeAndAfterAll
+class MainDriverReoSpec extends AnyFlatSpec with Matchers with SparkTestBase with BeforeAndAfterAll
   with CustomSchemaCovidReo {
 
   private val root: File = tempDir("covid_e2e").toFile
@@ -85,7 +85,7 @@ class MainDriverCovidReoSpec extends AnyFlatSpec with Matchers with SparkTestBas
   }
 
   private def run(gateway: MssqlGateway, overrides: String = ""): Seq[StepResult] =
-    MainDriverCovidReo.run(new ReoConf(config(overrides), "tu"), Some((_: ReoConf) => gateway))(spark)
+    MainDriverReo.run(new ReoConf(config(overrides), "tu"), Some((_: ReoConf) => gateway))(spark)
 
   private def statuses(summary: Seq[StepResult]): Seq[(String, String)] = summary.map(r => r.step -> r.status)
   private def lines(rel: String): Seq[String] = readText(f(rel)).split("\n").toSeq.filter(_.nonEmpty)
@@ -149,7 +149,7 @@ class MainDriverCovidReoSpec extends AnyFlatSpec with Matchers with SparkTestBas
       .write.mode(SaveMode.Overwrite).parquet(f("wp_reo/my_reo/conso_reo/T_OLD").getPath)
   }
 
-  behavior of "MainDriverCovidReo.run"
+  behavior of "MainDriverReo.run"
 
   it should "enchainer la table NRG -> PCI, le bloc MyREO et le bloc des ajustements SQL Server" in {
     val gateway = new FakeMssqlGateway(() => ajustments())
@@ -233,7 +233,7 @@ class MainDriverCovidReoSpec extends AnyFlatSpec with Matchers with SparkTestBas
   it should "ne pas se connecter a SQL Server quand ses etapes sont desactivees (reprise sur disque)" in {
     val noMssql = Seq("mssql_conso_delta", "mssql_cube", "mssql_aju_import", "mssql_truncate_import",
       "mssql_aju_export", "mssql_send_to_fact").map(s => s"dfin.bsy.reo.${s}_trt = false").mkString("\n")
-    val summary = MainDriverCovidReo.run(new ReoConf(config(noMssql + "\ndfin.bsy.reo.nrg_pci_map_trt = false"), "tu"),
+    val summary = MainDriverReo.run(new ReoConf(config(noMssql + "\ndfin.bsy.reo.nrg_pci_map_trt = false"), "tu"),
       Some((_: ReoConf) => throw new IllegalStateException("connexion SQL Server inattendue")))(spark)
     summary.filter(_.status == "OK").map(_.step) shouldBe Seq("reomaker_check", "reomaker_to_sv", "myreo_calculation",
       "myreo_plan_data_types", "myreo_conso_bv", "myreo_gts_skipper", "myreo_dc_conso_uv", "myreo_archive_inactive",

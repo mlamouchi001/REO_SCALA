@@ -46,15 +46,15 @@ import scala.collection.mutable.ArrayBuffer
  *  - une erreur SQL Server arrete la chaine (plusieurs jobs Talend sortaient en code 0).
  * Si une etape est desactivee, l'etape suivante relit sa sortie sur disque (reprise partielle).
  *
- * Usage : MainDriverCovidReo <env> <cheminConfHocon>   (env : dev | int | hom | prd)
+ * Usage : MainDriverReo <env> <cheminConfHocon>   (env : dev | int | hom | prd)
  */
-object MainDriverCovidReo {
+object MainDriverReo {
 
   private val logger = LoggerFactory.getLogger(this.getClass)
 
   def main(args: Array[String]): Unit = {
     if (args == null || args.length < 2) {
-      throw new IllegalArgumentException("Usage: MainDriverCovidReo <env> <absoluteConfigPath>")
+      throw new IllegalArgumentException("Usage: MainDriverReo <env> <absoluteConfigPath>")
     }
     val env = args(0).trim.toLowerCase
     val absoluteConfigPath = args(1)

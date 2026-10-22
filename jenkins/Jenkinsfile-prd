@@ -20,7 +20,7 @@ def towerJobTemplate = env.TOWER_JOB_TEMPLATE ?: "JOB_LUD_PRD_BSY_A2918_SCALA_SP
 def version = env.PROJECT_VERSION ? env.PROJECT_VERSION : getMavenPomVersion("pom.xml")
 def towerExtraVars = "env=prd irt_trigram=bsy_a2918 app_config=app/bsy_a2918/scala project_name=${projectName} project_version=${env.PROJECT_VERSION} jar_name=bsy_reo-${env.PROJECT_VERSION}-jar-with-dependencies project_group_id=com.bsy.datalake"
 // Un fichier de configuration par driver : reo_ajust.conf (MainDriverAjustReo), reo_myreo.conf (MainDriverMyReo)
-// et reo_covid.conf (MainDriverCovidReo).
+// et reo_covid.conf (MainDriverReo).
 // CONF_FILE_NAMES (liste separee par des virgules) permet de n'en redeployer qu'un.
 def confFileNames = (env.CONF_FILE_NAMES ?: env.CONF_FILE_NAME ?: 'reo_ajust.conf,reo_myreo.conf,reo_covid.conf').split(',')
 def towerHost = "awx.world.socgen"

@@ -26,7 +26,7 @@ reo_scala
 ├── docs/                        # analyses Talend, conception, recette
 ├── jenkins/Jenkinsfile-*        # pipelines SG dev / fhml / prd (repris du template)
 ├── src/main/scala/com/bsy/datalake/reo/
-│   ├── job/                     # MainDriverAjustReo, MainDriverMyReo, MainDriverCovidReo : orchestration des étapes
+│   ├── job/                     # MainDriverAjustReo, MainDriverMyReo, MainDriverReo : orchestration des étapes
 │   ├── common/                  # FetchSource, Runner et contrats par chaîne, StepRunner, session Spark
 │   ├── mapping/                 # un mapper par job Talend de transformation + ViewsAjustReo / ViewsMyReo / ViewsCovidReo (Spark SQL)
 │   └── utility/                 # schémas, conf, écriture, dispatch AJUST, catalogue MYREO, accès SQL Server, qualité
@@ -88,7 +88,7 @@ Chaîne MYREO (`MainDriverMyReo`) :
 
 Les nouveaux fichiers ne sont marqués lus que si le fichier SV a été écrit dans le même run. Avec plusieurs nouveaux fichiers, seul le dernier alimente le SV, comme chez Talend.
 
-Chaîne COVID (`MainDriverCovidReo`) :
+Chaîne COVID (`MainDriverReo`) :
 
 | Étape | Interrupteur `dfin.bsy.reo.*` | Remplace |
 |---|---|---|
