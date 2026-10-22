@@ -40,7 +40,7 @@ class FakeMssqlGateway(ajustments: () => DataFrame, procResults: Map[String, Pro
 
 /**
  * Test de bout en bout de la chaine COVID sur le systeme de fichiers local, avec la configuration de reference
- * conf/reo_covid.conf (seules les racines de l'environnement de test "tu" sont ajoutees) et une base SQL Server
+ * conf/reo_alim.conf (seules les racines de l'environnement de test "tu" sont ajoutees) et une base SQL Server
  * simulee.
  */
 class MainDriverReoSpec extends AnyFlatSpec with Matchers with SparkTestBase with BeforeAndAfterAll
@@ -60,7 +60,7 @@ class MainDriverReoSpec extends AnyFlatSpec with Matchers with SparkTestBase wit
          |dfin.bsy.reo.spark_sql_conf.tu { "spark.sql.shuffle.partitions" = 2 }
          |$overrides
          |""".stripMargin)
-      .withFallback(ConfigFactory.parseFile(new File("conf/reo_covid.conf")))
+      .withFallback(ConfigFactory.parseFile(new File("conf/reo_alim.conf")))
       .resolve()
 
   /** Ligne delimitee de `width` champs, vides sauf ceux indiques par position. */

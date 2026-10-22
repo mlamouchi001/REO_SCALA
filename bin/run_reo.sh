@@ -9,7 +9,7 @@
 #   chaine    : ajust | myreo | covid
 #   env       : dev | int | hom | prd | rec
 #   conf_hdfs : chemin HDFS du fichier de configuration du driver de la chaine :
-#               reo_ajust.conf pour ajust, reo_myreo.conf pour myreo, reo_covid.conf pour covid
+#               reo_ajust.conf pour ajust, reo_myreo.conf pour myreo, reo_alim.conf pour covid
 #               (ex. hdfs:///prd/app/bsy_a2918/conf/reo_ajust.conf)
 # Kerberos  : variables REO_PRINCIPAL et REO_KEYTAB (equivalent des contextes PrincipalProject_* et
 #             keytabProject_* des jobs Talend).
@@ -19,13 +19,13 @@
 # allocation dynamique). Ressources myreo : reduites, la chaine Talend etait faite de jobs Standard
 # (JVM de 1 Go) et traite un fichier d'extraction a la fois. Ressources covid : celles des jobs Spark Talend
 # de la chaine (driver 16g / 4 coeurs). Mot de passe SQL Server de la chaine covid : magasin jceks declare dans
-# reo_covid.conf, jamais sur la ligne de commande. A ajuster apres une premiere mesure.
+# reo_alim.conf, jamais sur la ligne de commande. A ajuster apres une premiere mesure.
 # ======================================================================================================
 set -eu
 
 CHAIN="${1:?chaine attendue : ajust | myreo | covid}"
 ENV="${2:?env attendu : dev | int | hom | prd | rec}"
-CONF="${3:?chemin HDFS du fichier de configuration attendu (reo_ajust.conf, reo_myreo.conf ou reo_covid.conf)}"
+CONF="${3:?chemin HDFS du fichier de configuration attendu (reo_ajust.conf, reo_myreo.conf ou reo_alim.conf)}"
 shift 3
 
 BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)

@@ -22,7 +22,7 @@ reo_scala
 ├── bin/run_reo.sh               # lancement spark-submit : chaîne (ajust | myreo | covid) et environnement
 ├── conf/reo_ajust.conf          # configuration du driver AJUST, tous environnements
 ├── conf/reo_myreo.conf          # configuration du driver MYREO, tous environnements
-├── conf/reo_covid.conf          # configuration du driver COVID, tous environnements (SQL Server compris)
+├── conf/reo_alim.conf          # configuration du driver COVID, tous environnements (SQL Server compris)
 ├── docs/                        # analyses Talend, conception, recette
 ├── jenkins/Jenkinsfile-*        # pipelines SG dev / fhml / prd (repris du template)
 ├── src/main/scala/com/bsy/datalake/reo/
@@ -50,12 +50,12 @@ export REO_PRINCIPAL=<principal Kerberos applicatif>
 export REO_KEYTAB=<chemin du keytab>
 bin/run_reo.sh ajust prd hdfs:///<chemin>/reo_ajust.conf
 bin/run_reo.sh myreo prd hdfs:///<chemin>/reo_myreo.conf
-bin/run_reo.sh covid prd hdfs:///<chemin>/reo_covid.conf
+bin/run_reo.sh covid prd hdfs:///<chemin>/reo_alim.conf
 ```
 
-Chaque driver attend deux arguments : l'environnement (`dev`, `int`, `hom`, `prd`) et le chemin HDFS de son fichier de configuration. Chaque driver a le sien : `reo_ajust.conf` pour AJUST, `reo_myreo.conf` pour MYREO, `reo_covid.conf` pour COVID. Le script choisit la classe et les ressources de la chaîne.
+Chaque driver attend deux arguments : l'environnement (`dev`, `int`, `hom`, `prd`) et le chemin HDFS de son fichier de configuration. Chaque driver a le sien : `reo_ajust.conf` pour AJUST, `reo_myreo.conf` pour MYREO, `reo_alim.conf` pour COVID. Le script choisit la classe et les ressources de la chaîne.
 
-Avant le premier lancement de la chaîne COVID, dans le `reo_covid.conf` déposé sur HDFS (le dépôt Git est public, ces valeurs n'y figurent pas) :
+Avant le premier lancement de la chaîne COVID, dans le `reo_alim.conf` déposé sur HDFS (le dépôt Git est public, ces valeurs n'y figurent pas) :
 
 1. remplacer les `A_RENSEIGNER` de `dfin.bsy.reo.mssql.<env>` (serveur et compte) par les valeurs des contextes Talend `cxnMSSQL_*` ;
 2. créer le magasin du mot de passe, lisible par le compte applicatif :

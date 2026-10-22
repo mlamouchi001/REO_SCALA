@@ -3,7 +3,7 @@ package com.bsy.datalake.reo.utility
 /**
  * Constantes de la chaine COVID (ex orchestrateur Talend LUD_FLOW_AJUSTEMENT_REO_COVID et ses 19 jobs enfants).
  *
- * Chaque constante "table" correspond a un bloc de configuration `dfin.bsy.<TABLE>` (cf. conf/reo_covid.conf).
+ * Chaque constante "table" correspond a un bloc de configuration `dfin.bsy.<TABLE>` (cf. conf/reo_alim.conf).
  * Les tables de meme nom que la chaine AJUST (YEAR_MAPPING, LK_*, DIM_*) designent les memes fichiers, avec
  * les memes options de lecture.
  */

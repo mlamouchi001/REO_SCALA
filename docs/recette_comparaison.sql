@@ -6,7 +6,7 @@
 --                       -d DTYPE_ARCH=<type archive> -d RD_DAY=<yyyyMMdd> -f recette_comparaison.sql
 --   ${TALEND} : prefixe d'environnement des sorties Talend HOM (/fhml/app/..., /fhml/srv/..., /fhml/uv/...).
 --   ${SCALA}  : racine du bac a sable de la recette, organisee comme les exemples roots.rec de
---               conf/reo_ajust.conf, conf/reo_myreo.conf et conf/reo_covid.conf (sous-dossiers raw, sv_reo,
+--               conf/reo_ajust.conf, conf/reo_myreo.conf et conf/reo_alim.conf (sous-dossiers raw, sv_reo,
 --               erk_sv_reo, bv_reo, bv, wp_reo, uv_reo).
 --
 -- Chaque bloc renvoie deux compteurs : lignes Talend absentes de Scala, lignes Scala absentes de Talend.

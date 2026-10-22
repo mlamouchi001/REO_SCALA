@@ -27,7 +27,7 @@ Ce document décrit la cible des trois chaînes Talend migrées dans le projet `
 | Règles Java | | | `utility.MyReoRules` | `utility.CovidRules` |
 | SQL Server | | | | `utility.MssqlGateway`, `JdbcMssqlGateway`, `MssqlSettings` |
 | Socle | `ReoConf`, `DataWriter`, `DataQuality`, `DataTypePlan`, `StepRunner`, `SparkSessionManager` | | | |
-| Configuration | un fichier par driver, même structure, lue par `ReoConf` | `conf/reo_ajust.conf` | `conf/reo_myreo.conf` | `conf/reo_covid.conf` |
+| Configuration | un fichier par driver, même structure, lue par `ReoConf` | `conf/reo_ajust.conf` | `conf/reo_myreo.conf` | `conf/reo_alim.conf` |
 | Lancement | `bin/run_reo.sh <chaine> <env> <conf>` | `ajust` | `myreo` | `covid` |
 
 Le référentiel des types de données ERK SV (`ajust/dtype`) est lu par les trois chaînes : sa table `REF_DATA_TYPE_SV` et son schéma sont dans le socle, et il est déclaré dans chacun des fichiers de configuration.
@@ -307,7 +307,7 @@ Chaque driver a son fichier de configuration, déposé sur HDFS et passé en 2e 
 |---|---|---|
 | `conf/reo_ajust.conf` | `MainDriverAjustReo` | 12 racines, interrupteurs AJUST, `on_missing_archive`, `timezone`, `output_partitions`, tables AJUST, CONSO, LK et DIM |
 | `conf/reo_myreo.conf` | `MainDriverMyReo` | 4 racines : `raw`, `sv_reo`, `erk_sv`, `wp_reo` ; interrupteurs MYREO, `myreo_on_missing_ref`, tables MYREO |
-| `conf/reo_covid.conf` | `MainDriverReo` | 12 racines (dont `erk_sv_reo`, la racine SV ERK de la table NRG -> PCI) ; 15 interrupteurs ; connexion SQL Server par environnement ; tables COVID, et tables LK, DIM, YEAR_MAPPING identiques à AJUST |
+| `conf/reo_alim.conf` | `MainDriverReo` | 12 racines (dont `erk_sv_reo`, la racine SV ERK de la table NRG -> PCI) ; 15 interrupteurs ; connexion SQL Server par environnement ; tables COVID, et tables LK, DIM, YEAR_MAPPING identiques à AJUST |
 
 Les trois fichiers ont la même structure, lue par la même classe `ReoConf` :
 
@@ -398,7 +398,7 @@ Chaîne MYREO :
 Chaîne COVID :
 
 1. Sauvegarder avant le run Talend les sorties que la chaîne écrase : fichier SV MyREO, `mp_nrg_pci`, `wp_reo/my_reo`, `wp_reo/ajust/aju`, fait UV `dc_conso/my_reo`, et les tables `dc_conso_delta` et `hdfs_import_ajustment_reo`.
-2. Déclarer `roots.rec` dans `reo_covid.conf` (sorties dans un bac à sable, référentiels lus sur HOM) et une base SQL Server de recette dans `mssql.rec`, ou désactiver les étapes `mssql_*` et comparer les DataFrames avant insertion.
+2. Déclarer `roots.rec` dans `reo_alim.conf` (sorties dans un bac à sable, référentiels lus sur HOM) et une base SQL Server de recette dans `mssql.rec`, ou désactiver les étapes `mssql_*` et comparer les DataFrames avant insertion.
 3. Comparer agrégats, conso, fait UV et fichiers du dépôt AJUST avec `docs/recette_comparaison.sql`.
 4. Points d'attention : chemin du SV lu par J1 en production (anomalie 1 de l'analyse), montants de 100 000 et plus dans la conso MyREO, taux FQM / FYM, arrondis `DECIMAL32` des effectifs, format des montants dans les fichiers texte.
 

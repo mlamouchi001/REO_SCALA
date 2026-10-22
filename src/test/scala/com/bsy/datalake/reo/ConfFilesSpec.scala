@@ -12,7 +12,7 @@ import java.io.File
 import scala.collection.JavaConverters._
 
 /**
- * Un fichier de configuration par driver (conf/reo_ajust.conf, conf/reo_myreo.conf, conf/reo_covid.conf) : chaque fichier doit
+ * Un fichier de configuration par driver (conf/reo_ajust.conf, conf/reo_myreo.conf, conf/reo_alim.conf) : chaque fichier doit
  * suffire a son driver dans les quatre environnements, sans table ni interrupteur de l'autre chaine, et les
  * declarations presentes dans les deux fichiers doivent rester identiques.
  */
@@ -44,7 +44,7 @@ class ConfFilesSpec extends AnyFlatSpec with Matchers {
     steps = Seq(M.STEP_LIST_FILES, M.STEP_RD_TO_SV, M.STEP_REF_UPDATE))
 
   private val covid = Chain(
-    "conf/reo_covid.conf",
+    "conf/reo_alim.conf",
     inputs = Seq(C.COVID_RUBRIQUE, A.LK_PCI, C.MP_NRG_PCI_EQUAL, C.MP_NRG_PCI_DIFF, C.MP_NRG_PCI_ODS_ALL,
       C.REOMAKER_ACTIVE, C.REOMAKER_IN, REF_DATA_TYPE_SV, C.REOMAKER_SV, A.YEAR_MAPPING, C.PARAM_M_MTD, C.PARAM_M_QTD,
       C.PARAM_M_FQ, C.PARAM_M_FY, C.ETP_MTD_GD1_GD2, C.ETP_GD2_MTD_QTD, C.ETP_GD2_MTD_YTD, C.ETP_GD2_QTD_FQ,
@@ -117,11 +117,11 @@ class CovidConfFileSpec extends AnyFlatSpec with Matchers {
 
   private val envPrefixes = Seq("dev" -> "dev", "int" -> "int", "hom" -> "fhml", "prd" -> "prd")
   private def load(file: String): Config = ConfigFactory.parseFile(new File(file)).resolve()
-  private lazy val covid = load("conf/reo_covid.conf")
+  private lazy val covid = load("conf/reo_alim.conf")
   private lazy val ajust = load("conf/reo_ajust.conf")
   private lazy val myreo = load("conf/reo_myreo.conf")
 
-  "conf/reo_covid.conf" should "reprendre les chemins des contextes Talend COVID de chaque environnement" in {
+  "conf/reo_alim.conf" should "reprendre les chemins des contextes Talend COVID de chaque environnement" in {
     envPrefixes.foreach { case (env, p) =>
       val conf = new ReoConf(covid, env)
       val erk = if (env == "dev") "a2832_erk" else "erk_a2832"
