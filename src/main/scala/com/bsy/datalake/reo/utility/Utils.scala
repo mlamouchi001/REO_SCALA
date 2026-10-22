@@ -132,7 +132,8 @@ object Utils {
    * Lignes texte delimitees au format des tHDFSOutput / tFileOutputDelimited Talend (CSV options decochees) :
    * valeurs jointes par le separateur, null -> champ vide, Double -> java.lang.Double.toString (notation
    * scientifique au-dela de 10^7 ou en dessous de 10^-3, comme StringBuilder.append(Double) chez Talend),
-   * autres types -> toString. L'ordre des lignes du DataFrame est conserve.
+   * decimal -> toPlainString a l'echelle de la colonne (sans exposant, comme les BigDecimal Talend), autres
+   * types -> toString. L'ordre des lignes du DataFrame est conserve.
    */
   def toDelimitedLines(df: DataFrame, separator: String): Dataset[String] = {
     val width = df.schema.length
@@ -143,6 +144,7 @@ object Utils {
         } else {
           row.get(i) match {
             case d: java.lang.Double => java.lang.Double.toString(d)
+            case b: java.math.BigDecimal => b.toPlainString
             case other => other.toString
           }
         }

@@ -3,7 +3,7 @@
 // partagee baseHadoopTemplate / ansibleTowerDeploy), avec deux corrections :
 //   - les resultats de tests publies sont les rapports JUnit de ScalaTest (le template publiait
 //     scoverage.xml comme resultat JUnit) ;
-//   - la couverture est produite par le profil Maven "coverage" et le rapport scalastyle par le build.
+//   - la couverture est produite par le plugin scoverage du pom (mvn scoverage:report).
 // A renseigner avec l'equipe CI : modele de job Ansible Tower et cle Sonar (variables ci-dessous). Si le
 // playbook accepte une liste de fichiers application_conf, un seul appel Tower suffit (stage deploy to edge).
 // =====================================================================================================
@@ -19,9 +19,10 @@ def pomVersion
 def towerJobTemplate = env.TOWER_JOB_TEMPLATE ?: "JOB_LUD_FHML_BSY_A2918_SCALA_SPARK_DEPLOY"
 def version = env.PROJECT_VERSION ? env.PROJECT_VERSION : getMavenPomVersion("pom.xml")
 def towerExtraVars = "env=fhml irt_trigram=bsy_a2918 app_config=app/bsy_a2918/scala project_name=${projectName} project_version=${env.PROJECT_VERSION} jar_name=bsy_reo-${env.PROJECT_VERSION}-jar-with-dependencies project_group_id=com.bsy.datalake"
-// Un fichier de configuration par driver : reo_ajust.conf (MainDriverAjustReo) et reo_myreo.conf (MainDriverMyReo).
+// Un fichier de configuration par driver : reo_ajust.conf (MainDriverAjustReo), reo_myreo.conf (MainDriverMyReo)
+// et reo_covid.conf (MainDriverCovidReo).
 // CONF_FILE_NAMES (liste separee par des virgules) permet de n'en redeployer qu'un.
-def confFileNames = (env.CONF_FILE_NAMES ?: env.CONF_FILE_NAME ?: 'reo_ajust.conf,reo_myreo.conf').split(',')
+def confFileNames = (env.CONF_FILE_NAMES ?: env.CONF_FILE_NAME ?: 'reo_ajust.conf,reo_myreo.conf,reo_covid.conf').split(',')
 def towerHost = "awx.world.socgen"
 def towerCredentialId = "jenkins_bsy"
 def towerTemplateType = null
@@ -74,15 +75,15 @@ baseHadoopTemplate() {
 
   stage('package (sans tests)') {
     container("build") {
-      // produit le fat jar, le bundle zip et target/scalastyle-output.xml
+      // produit le fat jar et le bundle zip
       sh("mvn -B -f pom.xml package -DskipTests=true")
     }
   }
 
   stage('tests avec couverture') {
     container("build") {
-      sh("mvn -B -f pom.xml -P coverage scoverage:report")
-      junit allowEmptyResults: false, testResults: "**/target/surefire-reports/*.xml"
+      sh("mvn -B -f pom.xml scoverage:report")
+      junit allowEmptyResults: false, testResults: "**/target/surefire-reports/jUnitResults/*.xml"
     }
   }
 

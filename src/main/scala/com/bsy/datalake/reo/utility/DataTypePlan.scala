@@ -1,6 +1,7 @@
 package com.bsy.datalake.reo.utility
 
 import com.bsy.datalake.reo.utility.ReoConstants.{DTYPE_ACTIVE, DTYPE_ARCHIVED}
+import org.apache.spark.sql.{DataFrame, Row}
 
 /** Ligne du referentiel des types de donnees (ERK SV ajust/dtype). */
 final case class DataTypeEntry(codeLvl1: String,
@@ -28,6 +29,19 @@ final case class DataTypePlan(active: Seq[String], archived: Seq[String], ignore
 }
 
 object DataTypePlan {
+
+  /** Plan construit depuis le referentiel lu (schema CustomSchemaReo.schemaRefDataTypeSv), dans l'ordre du fichier. */
+  def fromDataFrame(refDataType: DataFrame): DataTypePlan = {
+    def str(r: Row, i: Int): String = if (r.isNullAt(i)) null else r.getString(i)
+    from(refDataType.collect().toSeq.map { r =>
+      DataTypeEntry(
+        codeLvl1 = str(r, 0),
+        labelLvl1 = str(r, 1),
+        codeLvl2 = str(r, 2),
+        labelLvl2 = str(r, 3),
+        isActive = if (r.isNullAt(4)) None else Some(r.getInt(4)))
+    })
+  }
 
   /**
    * Construit le plan. Echoue sur les memes cas que Talend, avec un message explicite :

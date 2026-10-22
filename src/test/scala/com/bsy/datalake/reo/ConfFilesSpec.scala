@@ -1,7 +1,9 @@
 package com.bsy.datalake.reo
 
 import com.bsy.datalake.reo.utility.ReoConstants.{CONF_ROOT, REF_DATA_TYPE_SV}
-import com.bsy.datalake.reo.utility.{AjustReoConstants => A, DataWriter, MyReoConstants => M, ReoConf}
+import com.bsy.datalake.reo.utility.{AjustReoConstants => A, CovidReoConstants => C, DataWriter, MssqlSettings}
+import com.bsy.datalake.reo.utility.{MyReoConstants => M, ReoConf}
+import org.apache.hadoop.conf.Configuration
 import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -10,7 +12,7 @@ import java.io.File
 import scala.collection.JavaConverters._
 
 /**
- * Un fichier de configuration par driver (conf/reo_ajust.conf, conf/reo_myreo.conf) : chaque fichier doit
+ * Un fichier de configuration par driver (conf/reo_ajust.conf, conf/reo_myreo.conf, conf/reo_covid.conf) : chaque fichier doit
  * suffire a son driver dans les quatre environnements, sans table ni interrupteur de l'autre chaine, et les
  * declarations presentes dans les deux fichiers doivent rester identiques.
  */
@@ -41,7 +43,28 @@ class ConfFilesSpec extends AnyFlatSpec with Matchers {
     outputs = Seq(M.MYREO_NEW_FILES, M.MYREO_REF_FILES, M.MYREO_SV),
     steps = Seq(M.STEP_LIST_FILES, M.STEP_RD_TO_SV, M.STEP_REF_UPDATE))
 
-  Seq(ajust, myreo).foreach { chain =>
+  private val covid = Chain(
+    "conf/reo_covid.conf",
+    inputs = Seq(C.COVID_RUBRIQUE, A.LK_PCI, C.MP_NRG_PCI_EQUAL, C.MP_NRG_PCI_DIFF, C.MP_NRG_PCI_ODS_ALL,
+      C.REOMAKER_ACTIVE, C.REOMAKER_IN, REF_DATA_TYPE_SV, C.REOMAKER_SV, A.YEAR_MAPPING, C.PARAM_M_MTD, C.PARAM_M_QTD,
+      C.PARAM_M_FQ, C.PARAM_M_FY, C.ETP_MTD_GD1_GD2, C.ETP_GD2_MTD_QTD, C.ETP_GD2_MTD_YTD, C.ETP_GD2_QTD_FQ,
+      C.ETP_GD2_YTD_FY, C.MYREO_AJU_AGG, C.MYREO_CONSO_WP, C.MYREO_CONSO_SKIPPER, A.LK_GTS_TYPE_CA, A.LK_GTS_SKIPPER,
+      A.LK_CA_SNRG) ++ sharedDims ++ Seq(C.COVID_DIM_SUPERVISION, C.COVID_DIM_CONVERSION, C.MYREO_DC_CONSO_UV,
+      C.AJUST_AJU_SQL, C.AJUST_AJU_AGG),
+    outputs = Seq(C.MP_NRG_PCI_EQUAL, C.MP_NRG_PCI_DIFF, C.MP_NRG_PCI_ODS_DIFF, C.MP_NRG_PCI_ODS_DIFF9, C.REOMAKER_SV,
+      C.MYREO_VENTIL, C.MYREO_AJU_AGG, C.MYREO_CONSO_WP, C.MYREO_CONSO_ARCH, C.MYREO_CONSO_SKIPPER,
+      C.MYREO_DC_CONSO_UV, C.AJUST_AJU_SQL, C.AJUST_VENTIL, C.AJUST_AJU_AGG, C.AJUST_DEPOT_SQL, C.AJUST_DEPOT_AGG),
+    steps = Seq(C.STEP_NRG_PCI_MAP, C.STEP_REOMAKER_TO_SV, C.STEP_MYREO_CALCULATION, C.STEP_MYREO_CONSO_BV,
+      C.STEP_MYREO_GTS_SKIPPER, C.STEP_MYREO_DC_CONSO_UV, C.STEP_MYREO_ARCHIVE, C.STEP_MSSQL_CONSO_DELTA,
+      C.STEP_MSSQL_CUBE, C.STEP_MSSQL_AJU_IMPORT, C.STEP_MSSQL_TRUNCATE_IMPORT, C.STEP_AJUST_CALCULATION,
+      C.STEP_MSSQL_AJU_EXPORT, C.STEP_MSSQL_SEND_TO_FACT, C.STEP_AJUST_TO_DEPOT))
+
+  /** Referentiels UV lus a l'identique par les faits AJUST et MyREO (supervision et conversion different). */
+  private lazy val sharedDims: Seq[String] = Seq(A.DIM_SUPER_PHASE, A.DIM_PHASE, A.DIM_PCI, A.DIM_PERIODE,
+    A.DIM_ACTIVITE, A.DIM_PYRAMIDE_BUDG, A.DIM_CUMUL, A.DIM_DATA_TYPE, A.DIM_DATA_SOURCE, A.DIM_GTS_SKIPPER,
+    A.DIM_GTS_TYPE_CA, A.DIM_CLASSIFICATION)
+
+  Seq(ajust, myreo, covid).foreach { chain =>
     chain.file should "ne declarer que les tables de son driver" in {
       (chain.config.getObject("dfin.bsy").keySet().asScala.toSet - "reo") shouldBe (chain.inputs ++ chain.outputs).toSet
     }
@@ -87,5 +110,68 @@ class ConfFilesSpec extends AnyFlatSpec with Matchers {
       new ReoConf(myreo.config, env).inputPath(REF_DATA_TYPE_SV) shouldBe
         new ReoConf(ajust.config, env).inputPath(REF_DATA_TYPE_SV)
     }
+  }
+}
+
+class CovidConfFileSpec extends AnyFlatSpec with Matchers {
+
+  private val envPrefixes = Seq("dev" -> "dev", "int" -> "int", "hom" -> "fhml", "prd" -> "prd")
+  private def load(file: String): Config = ConfigFactory.parseFile(new File(file)).resolve()
+  private lazy val covid = load("conf/reo_covid.conf")
+  private lazy val ajust = load("conf/reo_ajust.conf")
+  private lazy val myreo = load("conf/reo_myreo.conf")
+
+  "conf/reo_covid.conf" should "reprendre les chemins des contextes Talend COVID de chaque environnement" in {
+    envPrefixes.foreach { case (env, p) =>
+      val conf = new ReoConf(covid, env)
+      val erk = if (env == "dev") "a2832_erk" else "erk_a2832"
+      conf.outputPath(C.MP_NRG_PCI_EQUAL) shouldBe s"/$p/srv/bsy_a2918/srv_bsy_a2918_basycout/sv_reo/$erk/ajust/mp_nrg_pci/equal"
+      conf.inputPath(C.REOMAKER_ACTIVE) shouldBe s"/$p/app/bsy_a2918/wp_reo/params/reomaker/reomaker_active.csv"
+      conf.inputPath(C.REOMAKER_IN) shouldBe s"/$p/app/bsy_a2918/app_bsy_a2918_basycout/bv_reo/reomaker/reomaker.csv"
+      conf.outputPath(C.MYREO_AJU_AGG) shouldBe s"/$p/app/bsy_a2918/wp_reo/my_reo/aju/agg/aju_agg.csv"
+      conf.outputPath(C.MYREO_DC_CONSO_UV) shouldBe s"/$p/uv/bsy_a2918/uv_bsy_a2918_basycout/uv_reo/dc_conso/my_reo/conso_reo.csv"
+      conf.outputPath(C.AJUST_AJU_SQL) shouldBe s"/$p/app/bsy_a2918/wp_reo/ajust/aju/sql/aju.csv"
+      conf.outputPath(C.MYREO_CONSO_ARCH) shouldBe
+        s"/$p/app/bsy_a2918/app_bsy_a2918_basycout/${if (env == "hom") "bv_reo" else "bv"}/conso_bigms/my_reo"
+    }
+  }
+
+  it should "ecrire le fichier SV de la chaine MYREO et le depot lu par la chaine AJUST" in {
+    envPrefixes.foreach { case (env, _) =>
+      val c = new ReoConf(covid, env)
+      c.outputPath(C.REOMAKER_SV) shouldBe new ReoConf(myreo, env).outputPath(M.MYREO_SV)
+      val a = new ReoConf(ajust, env)
+      c.outputPath(C.AJUST_DEPOT_SQL) shouldBe a.inputPath(A.AJUST_ARCHIVE_SQL) + "/sql_reo.csv"
+      c.outputPath(C.AJUST_DEPOT_AGG) shouldBe a.inputPath(A.AJUST_ARCHIVE_AGG) + "/agg_reo.csv"
+    }
+  }
+
+  it should "declarer a l'identique les racines et les tables communes avec reo_ajust.conf" in {
+    envPrefixes.foreach { case (env, _) =>
+      Seq("sv_reo", "erk_sv", "bv_reo", "bv", "wp_reo", "wp", "uv_reo", "ere_uv", "erk_uv", "gzh_uv", "usg_uv").foreach { root =>
+        val key = s"$CONF_ROOT.roots.$env.$root"
+        covid.getString(key) shouldBe ajust.getString(key)
+      }
+    }
+    (Seq(REF_DATA_TYPE_SV, A.YEAR_MAPPING, A.LK_PCI, A.LK_GTS_TYPE_CA, A.LK_GTS_SKIPPER, A.LK_CA_SNRG) ++
+      Seq(A.DIM_SUPER_PHASE, A.DIM_PHASE, A.DIM_PCI, A.DIM_PERIODE, A.DIM_ACTIVITE, A.DIM_PYRAMIDE_BUDG, A.DIM_CUMUL,
+        A.DIM_DATA_TYPE, A.DIM_DATA_SOURCE, A.DIM_GTS_SKIPPER, A.DIM_GTS_TYPE_CA, A.DIM_CLASSIFICATION)).foreach { t =>
+      withClue(t) {
+        covid.getConfig(s"dfin.bsy.$t").root().unwrapped() shouldBe ajust.getConfig(s"dfin.bsy.$t").root().unwrapped()
+      }
+    }
+  }
+
+  it should "declarer une connexion SQL Server par environnement, a completer au deploiement" in {
+    envPrefixes.foreach { case (env, _) =>
+      val e = the[IllegalArgumentException] thrownBy MssqlSettings.from(new ReoConf(covid, env), new Configuration(false))
+      e.getMessage should include(s"dfin.bsy.reo.mssql.$env.server a renseigner")
+      val filled = ConfigFactory.parseString(
+        s"""dfin.bsy.reo.mssql.$env { server = "sql.$env", login = "APP" }""").withFallback(covid).resolve()
+      MssqlSettings.from(new ReoConf(filled, env), new Configuration(false)).url shouldBe
+        s"jdbc:sqlserver://sql.$env:14001;databaseName=BSY_REO;applicationName=BSY_A2918;" +
+          "encrypt=true;trustServerCertificate=true;loginTimeout=60;"
+    }
+    covid.getString(s"$CONF_ROOT.mssql_on_proc_error") shouldBe "WARN"
   }
 }

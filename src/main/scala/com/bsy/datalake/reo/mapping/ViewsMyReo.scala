@@ -80,7 +80,7 @@ object ViewsMyReo {
    * Referentiel vide : Talend force un passage avec la ligne de lookup par defaut (Data_Type null), d'ou la
    * ligne nulle ajoutee. Referentiel non vide sans type actif : aucune ligne en sortie.
    */
-  val myreo_active_types_sql: String =
+  def activeTypesSql(refView: String): String =
     s"""
        |SELECT type_no,
        |       data_type_code_lvl_2
@@ -88,15 +88,17 @@ object ViewsMyReo {
        |  SELECT monotonically_increasing_id() AS type_no,
        |         data_type_code_lvl_2,
        |         is_active
-       |  FROM $V_SV_REF_DATA_TYPE
+       |  FROM $refView
        |) ref
        |WHERE is_active = $DTYPE_ACTIVE
        |UNION ALL
        |SELECT CAST(NULL AS BIGINT) AS type_no,
        |       CAST(NULL AS STRING) AS data_type_code_lvl_2
-       |FROM (SELECT COUNT(*) AS nb FROM $V_SV_REF_DATA_TYPE) c
+       |FROM (SELECT COUNT(*) AS nb FROM $refView) c
        |WHERE c.nb = 0
        |""".stripMargin
+
+  val myreo_active_types_sql: String = activeTypesSql(V_SV_REF_DATA_TYPE)
 
   /**
    * tMap_1, sortie out_aju_reo -> tHDFSOutput_1 (fichier SV) : valeurs MyREO sans leur premier et dernier

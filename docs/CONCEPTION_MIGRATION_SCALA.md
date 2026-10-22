@@ -1,33 +1,36 @@
 # Conception de la migration Scala / Spark des chaînes REO
 
-Ce document décrit la cible des deux chaînes Talend migrées dans le projet `bsy_reo` :
+Ce document décrit la cible des trois chaînes Talend migrées dans le projet `bsy_reo` :
 
 - **AJUST** : `LUD_AJU_ORCHESTRATION_DELTA_REO`, analysée dans [ANALYSE_TALEND_LUD_AJU_ORCHESTRATION_DELTA_REO.md](ANALYSE_TALEND_LUD_AJU_ORCHESTRATION_DELTA_REO.md) ;
-- **MYREO** : `LUD_MYREO_ORCHESTRATION_DATA_TO_SV`, analysée dans [ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md](ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md).
+- **MYREO** : `LUD_MYREO_ORCHESTRATION_DATA_TO_SV`, analysée dans [ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md](ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md) ;
+- **COVID** : `LUD_FLOW_AJUSTEMENT_REO_COVID`, analysée dans [ANALYSE_TALEND_LUD_FLOW_AJUSTEMENT_REO_COVID.md](ANALYSE_TALEND_LUD_FLOW_AJUSTEMENT_REO_COVID.md).
 
 ## 1. Principes
 
 - **Même conception que le template FDA et EXP_ENG_FRG_SUV** : packages `job`, `common`, `mapping`, `utility` ; chaîne Driver -> FetchSource -> Runner -> Mapper (`AbstractMapperProvider`) -> requêtes Spark SQL d'un objet `Views` -> DataWriter.
 - **Un projet, un driver par chaîne** : comme `MainDriverUV` et `MainDriverSUV` dans EXP_ENG_FRG_SUV, chaque chaîne a son driver, son FetchSource, son runner, ses mappers et son objet `Views`. Le socle est partagé.
-- **Parité fonctionnelle avec Talend d'abord** : chaque requête cite le composant Talend qu'elle remplace ; les écarts sont listés au chapitre 9.
+- **Parité fonctionnelle avec Talend d'abord** : chaque requête cite le composant Talend qu'elle remplace ; les écarts sont listés au chapitre 10.
 - **Corrections des faiblesses relevées sur EXP_ENG_FRG_SUV** : référentiels passés par nom et non par position, vues temporaires préfixées par mapper, garde-fou sur les racines partagées, configuration versionnée, tests de bout en bout.
 
 ## 2. Organisation du projet
 
-| Élément | Commun | AJUST | MYREO |
-|---|---|---|---|
-| Driver | | `job.MainDriverAjustReo` | `job.MainDriverMyReo` |
-| Sources | `utility.Utils` (lecteurs) | `common.FetchSourceAjustReo` | `common.FetchSourceMyReo` |
-| Runner | `common.AbstractMapperProvider` | `common.AbstractPrimaryAjustReo`, `common.AjustReoRunner` | `common.AbstractPrimaryMyReo`, `common.MyReoRunner` |
-| Mappers | | `mapping.MainMapperAjust*` | `mapping.MainMapperMyReo*` |
-| Requêtes SQL | | `mapping.ViewsAjustReo` | `mapping.ViewsMyReo` |
-| Constantes | `utility.ReoConstants` | `utility.AjustReoConstants` | `utility.MyReoConstants` |
-| Schémas | `utility.CustomSchemaReo` (référentiel des types) | `utility.CustomSchemaAjustReo` | `utility.CustomSchemaMyReo` |
-| Socle | `ReoConf`, `DataWriter`, `DataQuality`, `StepRunner`, `SparkSessionManager` | | |
-| Configuration | un fichier par driver, même structure, lue par `ReoConf` | `conf/reo_ajust.conf` | `conf/reo_myreo.conf` |
-| Lancement | `bin/run_reo.sh <chaine> <env> <conf>` | `ajust` | `myreo` |
+| Élément | Commun | AJUST | MYREO | COVID |
+|---|---|---|---|---|
+| Driver | | `job.MainDriverAjustReo` | `job.MainDriverMyReo` | `job.MainDriverCovidReo` |
+| Sources | `utility.Utils` (lecteurs) | `common.FetchSourceAjustReo` | `common.FetchSourceMyReo` | `common.FetchSourceCovidReo` |
+| Runner | `common.AbstractMapperProvider` | `common.AbstractPrimaryAjustReo`, `common.AjustReoRunner` | `common.AbstractPrimaryMyReo`, `common.MyReoRunner` | `common.AbstractPrimaryCovidReo`, `common.CovidReoRunner` |
+| Mappers | | `mapping.MainMapperAjust*` | `mapping.MainMapperMyReo*` | `mapping.MainMapperCovid*`, et `MainMapperAjustConsoArch` réutilisé |
+| Requêtes SQL | | `mapping.ViewsAjustReo` | `mapping.ViewsMyReo` | `mapping.ViewsCovidReo` (réutilise `yearFilterSql`, `dcConsoSql`, `activeTypesSql`) |
+| Constantes | `utility.ReoConstants` | `utility.AjustReoConstants` | `utility.MyReoConstants` | `utility.CovidReoConstants` |
+| Schémas | `utility.CustomSchemaReo` (référentiel des types) | `utility.CustomSchemaAjustReo` | `utility.CustomSchemaMyReo` | `utility.CustomSchemaCovidReo` (hérite des deux autres) |
+| Règles Java | | | `utility.MyReoRules` | `utility.CovidRules` |
+| SQL Server | | | | `utility.MssqlGateway`, `JdbcMssqlGateway`, `MssqlSettings` |
+| Socle | `ReoConf`, `DataWriter`, `DataQuality`, `DataTypePlan`, `StepRunner`, `SparkSessionManager` | | | |
+| Configuration | un fichier par driver, même structure, lue par `ReoConf` | `conf/reo_ajust.conf` | `conf/reo_myreo.conf` | `conf/reo_covid.conf` |
+| Lancement | `bin/run_reo.sh <chaine> <env> <conf>` | `ajust` | `myreo` | `covid` |
 
-Le référentiel des types de données ERK SV (`ajust/dtype`) est lu par les deux chaînes : sa table `REF_DATA_TYPE_SV` et son schéma sont dans le socle, et il est déclaré dans chacun des deux fichiers de configuration.
+Le référentiel des types de données ERK SV (`ajust/dtype`) est lu par les trois chaînes : sa table `REF_DATA_TYPE_SV` et son schéma sont dans le socle, et il est déclaré dans chacun des fichiers de configuration.
 
 ## 3. Chaîne AJUST : organisation des sous-jobs
 
@@ -105,11 +108,62 @@ flowchart TD
 
 Le listing et l'historique restent hors Spark, comme le dispatch AJUST : ce sont des opérations sur des fichiers nommés. Le delta et la transformation sont en Spark SQL. Le fichier SV est écrit par Spark dans un dossier temporaire caché, puis le fichier `part-*` est renommé au nom attendu.
 
-## 5. Architecture des classes
+## 5. Chaîne COVID : organisation des sous-jobs
+
+### Avant / après
+
+| | Talend | Scala |
+|---|---|---|
+| Applications | 20 jobs : 7 applications Spark, 12 JVM Standard, une JVM et une connexion Kerberos par tRunJob, répétées par ligne active de `reomaker_active.csv` et par type de données | 1 application Spark |
+| Table NRG -> PCI | calculée dans chaque conso MyREO (par type actif), puis par NRG_PCI_MAP | calculée une fois, en tête de chaîne |
+| Bloc MyREO | exécuté une fois par ligne active du fichier de pilotage | exécuté une fois si au moins une ligne est active (même état final) |
+| Ventilations J1 et J2 | deux jobs de 8 000 lignes de code généré, à la même topologie | un mapper paramétré par `VentilLayout` (colonnes et trois règles qui diffèrent) |
+| Conso, enrichissement, fait UV MyREO | recalculés par type actif | calculés une fois, écrits par type actif ; fait UV écrit une fois |
+| SQL Server | pilote jTDS, erreurs souvent avalées, vidage avant contrôle | pilote Microsoft, toute erreur arrête la chaîne, données contrôlées avant le vidage |
+| Reprise | relance complète | interrupteur par étape ; l'étape suivante relit la sortie précédente sur disque |
+
+### Étapes
+
+```mermaid
+flowchart TD
+  C1["1. nrg_pci_map<br/>mp_nrg_pci/equal, diff"] --> C2{"2. reomaker_check<br/>ligne is_active = 1 ?"}
+  C2 -- oui --> C3["3. reomaker_to_sv"] --> C4["4. myreo_calculation (J1)"] --> C5["5. myreo_plan_data_types"]
+  C5 --> C6["6. myreo_conso_bv"] --> C7["7. myreo_gts_skipper"] --> C8["8. myreo_dc_conso_uv"]
+  C8 --> C9["9. myreo_archive_inactive"] --> C10["10. mssql_conso_delta"] --> C11["11. mssql_cube"]
+  C2 -- non --> C12
+  C11 --> C12["12. mssql_aju_import"] --> C13["13. mssql_truncate_import"] --> C14["14. ajust_calculation (J2)"]
+  C14 --> C15["15. mssql_aju_export"] --> C16["16. mssql_send_to_fact"] --> C17["17. ajust_to_depot"]
+```
+
+| Étape | Interrupteur | Remplace | Implémentation |
+|---|---|---|---|
+| 1 | `nrg_pci_map_trt` | LUD_AJUST_REO_NRG_PCI_MAP_TO_SV_SPARK (et blocs A, B de la conso MyREO) | `MainMapperCovidNrgPciEqual`, `...OdsDiff`, `...Diff` |
+| 2 | toujours exécutée | LUD_FLOW_MY_REO_TOOL, tHDFSInput_1 + tMap_1 | `CovidReoRunner.runReomakerCheck` |
+| 3 | `reomaker_to_sv_trt` | MYREO_ORCHESTRATION_DATA_TO_SV -> MYREO_REO_RD_TO_SV | `MainMapperCovidReomakerToSv` |
+| 4 | `myreo_calculation_trt` | LUD_AJUST_REO_CALCULATION_SPARK | `MainMapperCovidVentilation` (`VentilLayout.MYREO`) |
+| 5 | toujours exécutée | MYREO_ORCHESTRATION_DTYPE | `DataTypePlan.fromDataFrame` |
+| 6 | `myreo_conso_bv_trt` | LUD_AJUST_REO_CONSO_TO_BV_SPARK, bloc C | `MainMapperCovidMyReoConsoBv` |
+| 7 | `myreo_gts_skipper_trt` | REO_CONSO_ADD_GTS_SKIPPER_TO_BV_SPARK_MY_REO | `MainMapperCovidMyReoGtsSkipper` |
+| 8 | `myreo_dc_conso_uv_trt` | REO_CONSO_ADD_GTS_SKIPPER_ODS_TO_UV_SPARK_MY_REO | `MainMapperCovidMyReoDcConsoUv` |
+| 9 | `myreo_archive_inactive_trt` | AJUST_REO_CONSO_TO_BV_SPARK_ARCH | `MainMapperAjustConsoArch` (même requête) |
+| 10 | `mssql_conso_delta_trt` | LUD_EXP_SQLDB_CONSO_DATA_REO_FROM_UV_TO_MSSQL_STOCK + TRUNCATE_CONSO_REO_PROC_MSSQL | `MainMapperCovidDcConsoExport`, `MssqlGateway` |
+| 11 | `mssql_cube_trt` | CUBE_PROC_MSSQL | `MssqlGateway.callProcedure` |
+| 12 | `mssql_aju_import_trt` | LUD_REO_AJU_FROM_MSSQL_TO_HDFS | `MssqlGateway.query`, `MainMapperCovidAjuFromMssql` |
+| 13 | `mssql_truncate_import_trt` | LUD_REO_TRUNCATE_HDFS_AJUSTEMENT_TO_FACT_TABLE | `MssqlGateway.callProcedure` |
+| 14 | `ajust_calculation_trt` | LUD_REO_AJUST_CALCULATION_SPARK | `MainMapperCovidVentilation` (`VentilLayout.AJUST`) |
+| 15 | `mssql_aju_export_trt` | LUD_REO_EXP_AJU_ADD_GTS_SKIPPER_FROM_HDFS_TO_MSSQL | `MainMapperCovidAjuExport`, `MssqlGateway.insert` |
+| 16 | `mssql_send_to_fact_trt` | LUD_REO_SEND_HDFS_AJUSTEMENT_TO_FACT | `MssqlGateway.callProcedure` |
+| 17 | `ajust_to_depot_trt` | LUD_REO_AJUST_ODS_TO_ARCHIVE | `MainMapperCovidAjustDepot` |
+
+Entre deux étapes, la sortie est relue sur disque, comme les jobs Talend le faisaient : chaque étape reste rejouable seule. À l'intérieur d'une ventilation, les 14 branches restent en mémoire (persistées) ; elles sont écrites dans le dossier `ventil` pour la traçabilité, mais l'agrégat ne relit pas ce dossier.
+
+SQL Server : `MssqlGateway` porte les trois opérations des jobs Talend (procédure `{? = call [dbo].<proc>(?)}`, lecture par requête, insertion par lots). Les tests de bout en bout utilisent une base simulée ; l'accès SQL Server n'est créé qu'au premier besoin, une chaîne dont les étapes SQL Server sont désactivées ne s'y connecte pas.
+
+## 6. Architecture des classes
 
 | Classe | Rôle | Équivalent template / EXP_ENG_FRG_SUV |
 |---|---|---|
-| `job.MainDriverAjustReo`, `job.MainDriverMyReo` | Point d'entrée d'une chaîne, orchestration des étapes, `run` testable | `MainDriver`, `MainDriverUV`, `MainDriverSUV` |
+| `job.MainDriverAjustReo`, `job.MainDriverMyReo`, `job.MainDriverCovidReo` | Point d'entrée d'une chaîne, orchestration des étapes, `run` testable | `MainDriver`, `MainDriverUV`, `MainDriverSUV` |
 | `common.SparkSessionManager` | Session Spark, AQE, paramètres SQL par environnement | identique |
 | `common.FetchSourceAjustReo`, `common.FetchSourceMyReo` | Une lazy val par source, options de lecture issues de la configuration | `FetchSource`, `FetchSourceUV` |
 | `common.AbstractPrimaryAjustReo`, `common.AbstractPrimaryMyReo` | Exposent les sources, déclarent un traitement par sous-job | `AbstractPrimary`, `AbstractPrimaryUV` |
@@ -128,8 +182,12 @@ Le listing et l'historique restent hors Spark, comme le dispatch AJUST : ce sont
 | `utility.MyReoFileCatalog` | Listing du dépôt MyREO, liste des candidats, historique des fichiers lus | nouveau |
 | `utility.MyReoRules` | `SG_NumberUtils.toDouble` en UDF | nouveau |
 | `utility.DataQuality` | Contrôles bloquants (`superphase_id`, `is_active`), alertes de doublons | nouveau |
+| `job.MainDriverCovidReo` | Chaîne COVID : 17 étapes, accès SQL Server injectable | `MainDriver` |
+| `mapping.VentilLayout`, `mapping.MainMapperCovidVentilation` | Ventilation commune aux deux jobs de calcul, paramétrée par la disposition des colonnes | nouveau |
+| `utility.CovidRules` | `BigDecimal.multiply(x, DECIMAL64 / DECIMAL32)`, `Integer.parseInt`, `parseTo_Double` en UDF | nouveau |
+| `utility.MssqlGateway`, `JdbcMssqlGateway`, `MssqlSettings` | Procédures, lecture et insertion SQL Server ; paramètres par environnement, mot de passe lu dans un magasin Hadoop | remplace tMSSqlConnection, tMSSqlSP, tMSSqlInput, tMSSqlOutput |
 
-## 6. Correspondance composants Talend -> Spark SQL
+## 7. Correspondance composants Talend -> Spark SQL
 
 Chaîne AJUST, requêtes de `mapping/ViewsAjustReo.scala` :
 
@@ -153,6 +211,32 @@ Chaîne MYREO, requêtes de `mapping/ViewsMyReo.scala` :
 | Job enfant | tMap_1, sortie `out_aju_reo` | `myreo_rd_to_sv_sql` |
 | Contrôle qualité | aucun équivalent Talend | `myreo_amount_check_sql` |
 
+Chaîne COVID, requêtes de `mapping/ViewsCovidReo.scala` :
+
+| Job Talend | Composants | Requête |
+|---|---|---|
+| NRG_PCI_MAP | tSqlRow_1 | `nrg_out1_sql` |
+| NRG_PCI_MAP | tMap_3 (equal) | `nrg_equal_sql` |
+| NRG_PCI_MAP | tMap_2 (to_diff, to_diff9) | `nrgToDiffSql(startsWith9)` |
+| NRG_PCI_MAP | tSqlRow_7 / _6, tSqlRow_3 / _5 | `nrg_count_filter_sql`, `nrg_min_pci_sql` |
+| NRG_PCI_MAP | tSqlRow_4, tSqlRow_2 | `nrg_diff_candidates_sql`, `nrg_diff_sql` |
+| MY_REO_TOOL | tMap_1 | `reomaker_active_count_sql` |
+| MYREO_REO_RD_TO_SV | lookup filtré, tMap_1 | `reomaker_active_types_sql` (= `ViewsMyReo.activeTypesSql`), `reomaker_to_sv_sql` |
+| J1 / J2 | tSqlRow_6 / tSqlRow_1 + tSqlRow_8 + tMap_14 | `myreo_ytd_sql`, `ajust_ytd_sql` |
+| J1 / J2 | tSqlRow_2 + tMap_1 (MTD) | `ventilMtdSql(layout)` |
+| J1 / J2 | tSqlRow_3, 4, 5 + tMap_2, 3, 4 (QTD, FQ, FY) | `ventilCumulSql(layout, cumul, mapping)` |
+| J1 / J2 | tSqlRow_9, 10 (effectifs MTD, QTD) | `ventilEtpCopySql(layout, cumul)` |
+| J1 / J2 | tSqlRow_13, 15, 16, 17, 19, 21, 23 (correspondances datées) | `etpDatedMappingSql(layout, mapping)` |
+| J1 / J2 | tSqlRow_11, 12, 14, 18, 20, 22, 24 + post-processors | `ventilEtpShiftSql(layout, ...)` |
+| J1 / J2 | tAggregateRow_1 + tSqlRow_7 | `ventilAggregateSql(layout)` |
+| CONSO_TO_BV MyREO | tSqlRow_9, tMap_1, tSqlRow_8 | `conso_mp_sql`, `conso_to_agg_sql`, `conso_year_filter_sql` (= `yearFilterSql`) |
+| GTS_SKIPPER MyREO | tMap_1, 2, 3, 4 | `gts_skipper_enrich_sql` |
+| ODS_TO_UV MyREO | tSqlRow_1, tSqlRow_2, 14 tMap, tSqlRow_3 | `uv_super_phase_code_sql`, `uv_super_phase_check_sql`, `uv_dc_conso_sql` (= `ViewsAjustReo.dcConsoSql`), `uv_not_null_sql` |
+| AJU_FROM_MSSQL | tMap_3 | `mssql_aju_sql` |
+| EXP_AJU_ADD_GTS | tMap_1, 2, 4, 3, 5 | `export_aju_sql` |
+| LUD_EXP_SQLDB | tHDFSInput_1 -> tDBOutput_1 | `export_dc_conso_sql` |
+| ODS_TO_ARCHIVE | tMap_1, tMap_2 | `depotCopySql(columns)` |
+
 Règles de traduction :
 
 | Talend | Spark SQL |
@@ -173,8 +257,13 @@ Règles de traduction :
 | TRIMALL | `ignoreLeadingWhiteSpace` / `ignoreTrailingWhiteSpace` |
 | Ordre des lignes d'un job Standard | colonne `line_no`, `ORDER BY`, écriture par `coalesce(1)` |
 | `StringBuilder.append(Double)` | `Utils.toDelimitedLines` : `Double.toString` |
+| `SG_StringUtils.equals(a, b)` (null-safe) | `a <=> b` |
+| `BigDecimal.multiply(x, MathContext.DECIMAL64 / DECIMAL32)` | UDF `covid_mul64` / `covid_mul32`, arrondi par ligne puis échelle 16 |
+| `StringHandling.CHANGE(x, "GD1", "GD2")` | `REGEXP_REPLACE(x, 'GD1', 'GD2')` |
+| Clés vides d'un job Standard (`""` égal à `""`) | `COALESCE(x, '')` des deux côtés de la jointure |
+| tMSSqlSP, tMSSqlInput, tMSSqlOutput | `MssqlGateway` : CallableStatement côté driver, lecture et écriture JDBC Spark |
 
-## 7. Modèle de données
+## 8. Modèle de données
 
 Chaîne AJUST :
 
@@ -198,7 +287,19 @@ Chaîne MYREO :
 | WP | liste des candidats, historique des fichiers lus | texte `;` UTF-8 | fichier déposé |
 | SV | `my_reo/Extract_Ajus_Outil_REO_pour_BSY_REO.csv` | texte `;` sans en-tête, 10 colonnes, montant `Double` | ligne d'ajustement × type de données actif |
 
-## 8. Configuration
+Chaîne COVID :
+
+| Couche | Données | Format | Granularité |
+|---|---|---|---|
+| SV ERK | table NRG -> PCI `mp_nrg_pci/{equal,diff}` | dossiers CSV `;` | sous-NRG -> compte |
+| SV | fichier SV REOMAKER (même fichier que MYREO) | texte `;`, 10 colonnes, montant `Double` | ligne REOMAKER × type actif |
+| WP | ventilations et agrégats `my_reo/aju`, `ajust/aju` | texte `;`, `DECIMAL(32,16)` sans exposant | 9 axes (MyREO) ou 18 colonnes (SQL Server) |
+| WP / BV | conso, conso enrichie, archive MyREO | Parquet non compressé, 11 ou 14 colonnes | comme AJUST |
+| UV | fait `dc_conso/my_reo/conso_reo.csv` | texte `;`, 15 colonnes | 14 clés + montant |
+| WP | extraction `ajust/aju/sql/aju.csv`, dépôt `ajust/aju/archive` | texte `;` UTF-8, 19 colonnes | ajustement |
+| SQL Server | `dc_conso_delta`, `hdfs_import_ajustment_reo` | tables, insertion par lots | comme les fichiers source |
+
+## 9. Configuration
 
 Chaque driver a son fichier de configuration, déposé sur HDFS et passé en 2e argument :
 
@@ -206,8 +307,9 @@ Chaque driver a son fichier de configuration, déposé sur HDFS et passé en 2e 
 |---|---|---|
 | `conf/reo_ajust.conf` | `MainDriverAjustReo` | 12 racines, interrupteurs AJUST, `on_missing_archive`, `timezone`, `output_partitions`, tables AJUST, CONSO, LK et DIM |
 | `conf/reo_myreo.conf` | `MainDriverMyReo` | 4 racines : `raw`, `sv_reo`, `erk_sv`, `wp_reo` ; interrupteurs MYREO, `myreo_on_missing_ref`, tables MYREO |
+| `conf/reo_covid.conf` | `MainDriverCovidReo` | 12 racines (dont `erk_sv_reo`, la racine SV ERK de la table NRG -> PCI) ; 15 interrupteurs ; connexion SQL Server par environnement ; tables COVID, et tables LK, DIM, YEAR_MAPPING identiques à AJUST |
 
-Les deux fichiers ont la même structure, lue par la même classe `ReoConf` :
+Les trois fichiers ont la même structure, lue par la même classe `ReoConf` :
 
 - `dfin.bsy.reo.roots.<env>` : les racines des contextes Talend utilisées par la chaîne.
 - `dfin.bsy.<TABLE>` : racine et chemin relatif, options de lecture (`input_delimiter`, `input_header`, `input_trim`, `input_encoding`) ou d'écriture (`output_format`, `output_delimiter`, `output_compression`, `output_partitions`).
@@ -218,11 +320,13 @@ Les deux fichiers ont la même structure, lue par la même classe `ReoConf` :
 - AJUST : `dfin.bsy.reo.on_missing_archive` vaut `EMPTY` (comportement Talend) ou `SKIP`.
 - MYREO : `MYREO_RD_FILES` porte le dépôt, les masques `dir_masks` et `file_masks`, et le format des extractions. `MYREO_NEW_FILES`, `MYREO_REF_FILES` et `MYREO_SV` portent les trois fichiers produits. `dfin.bsy.reo.myreo_on_missing_ref` vaut `EMPTY` (historique vide) ou `FAIL` (arrêt, comme Talend).
 
-Les racines `raw`, `sv_reo`, `erk_sv`, `wp_reo` et le référentiel `REF_DATA_TYPE_SV` figurent dans les deux fichiers : un changement doit être reporté dans les deux. Le test `ConfFilesSpec` le vérifie, et contrôle que chaque fichier résout tous les chemins de son driver dans les quatre environnements, sans table de l'autre chaîne.
+Les racines et les tables communes figurent dans plusieurs fichiers : un changement doit être reporté partout. Le test `ConfFilesSpec` le vérifie (racines, référentiel des types, tables LK et DIM, liens entre chaînes : fichier SV MyREO commun, dépôt AJUST écrit par COVID), et contrôle que chaque fichier résout tous les chemins de son driver dans les quatre environnements, sans table d'une autre chaîne.
 
-Les Jenkinsfiles déploient les deux fichiers : un appel Ansible Tower par fichier, car le modèle repris du template ne prend qu'un `application_conf` par appel.
+SQL Server (COVID) : `dfin.bsy.reo.mssql.<env>` porte le serveur, le port, la base, le schéma, le compte et les propriétés du pilote. Le dépôt Git étant public, le serveur et le compte valent `A_RENSEIGNER` : ils sont à reporter depuis les contextes Talend `cxnMSSQL_*` dans le fichier déposé sur HDFS, et le driver refuse de se connecter tant qu'ils ne le sont pas. Le mot de passe n'est jamais dans la configuration : il est lu au moment de la connexion dans un magasin Hadoop jceks (`password_alias`, `credential_provider_path`), ou à défaut dans une variable d'environnement du driver (`password_env`). `mssql_on_proc_error` (`WARN` par défaut, comme Talend, ou `FAIL`) décide du sort d'un code retour non nul de procédure ; `mssql_query_timeout` borne les requêtes et les procédures.
 
-## 9. Écarts assumés par rapport à Talend
+Les Jenkinsfiles déploient les trois fichiers : un appel Ansible Tower par fichier, car le modèle repris du template ne prend qu'un `application_conf` par appel.
+
+## 10. Écarts assumés par rapport à Talend
 
 Chaîne AJUST :
 
@@ -255,7 +359,27 @@ Chaîne MYREO :
 | Historique sans `\n` final : un `\n` est ajouté avant les nouvelles lignes | Talend aurait collé deux lignes |
 | Alertes de qualité : montants convertis à 0.0, lignes CRLF, doublons d'historique | La règle Talend est conservée, mais rendue visible dans les logs |
 
-## 10. Plan de recette
+Chaîne COVID :
+
+| Écart | Justification |
+|---|---|
+| Table NRG -> PCI calculée une fois, en tête de chaîne | Talend la calculait à l'identique dans chaque conso MyREO, puis dans NRG_PCI_MAP |
+| Bloc MyREO exécuté une fois si au moins une ligne de `reomaker_active.csv` vaut `"1"` | Talend l'exécutait une fois par ligne active, avec les mêmes paramètres : état final identique (vidages et insertions SQL Server compris) |
+| Listing du dépôt MyREO, liste NEW et ligne `;;1` de l'historique MYREO non repris | Sans usage dans la chaîne COVID, et en collision avec la chaîne MYREO (dépôt lu en DEV même en production) |
+| J1 lit le fichier SV MyREO à son chemin voulu | Talend lisait `sv_reo` suivi de deux tabulations (valeur DEV de `AJU_REO_IN`) |
+| Montant de la conso MyREO en `DECIMAL(32,16)`, alerte sur les montants hors du `DECIMAL(17,12)` Talend | Le lecteur Talend perdait ou rejetait les montants de 100 000 et plus |
+| Agrégats des ventilations calculés sur les branches en mémoire | Un fichier résiduel du dossier `ventil` n'est plus sommé |
+| Correspondances uniques dédoublonnées sur un ordre déterministe | Talend gardait une ligne arbitraire |
+| Fait UV MyREO : lignes écartées par le filtre NOT NULL comptées dans les logs, par clé nulle | Talend les supprimait sans trace |
+| Sorties de mise au point `ods/temp/sortie1.csv` et `sortie2.csv` non produites | Aucun consommateur |
+| Contrôles avant écriture : montant REOMAKER invalide, colonne nulle de `ajustment_reo`, date illisible, valeur non numérique du fait UV | Talend ouvrait ses sorties (ou vidait ses tables) avant de lire, et plusieurs jobs avalaient l'erreur (code 0) |
+| Fait UV exporté vers `dc_conso_delta` contrôlé avant l'appel de la procédure de vidage | Une valeur invalide ne laisse plus la table vide |
+| Toute erreur SQL Server arrête la chaîne ; insertion transactionnelle par partition | Talend ignorait les lots en échec et continuait ; plus de chargement partiel silencieux |
+| Requête d'extraction à colonnes nommées | Talend lisait `select *` par position |
+| Pilote Microsoft `mssql-jdbc` au lieu de jTDS | Dialecte Spark SQL Server ; jTDS reste possible par `url` et `driver` |
+| Code retour non nul d'une procédure : alerte par défaut, arrêt avec `mssql_on_proc_error = FAIL` | Contrat des procédures `p_api_*` inconnu ; Talend ne le testait pas |
+
+## 11. Plan de recette
 
 Chaîne AJUST :
 
@@ -271,11 +395,21 @@ Chaîne MYREO :
 3. Lancer `bin/run_reo.sh myreo rec ...`, puis comparer le fichier SV et l'historique avec le chapitre MYREO de `docs/recette_comparaison.sql`.
 4. Points d'attention : plusieurs nouveaux fichiers dans le même run, ordre `*.RECU` puis `*.PRET`, format des montants `Double`, URI des dossiers dans l'historique.
 
-## 11. Tests
+Chaîne COVID :
 
-`mvn test` lance 106 tests. `ConfFilesSpec` contrôle les deux fichiers de configuration. Huit scénarios de bout en bout tournent sur système de fichiers local, chacun avec le fichier de configuration de son driver :
+1. Sauvegarder avant le run Talend les sorties que la chaîne écrase : fichier SV MyREO, `mp_nrg_pci`, `wp_reo/my_reo`, `wp_reo/ajust/aju`, fait UV `dc_conso/my_reo`, et les tables `dc_conso_delta` et `hdfs_import_ajustment_reo`.
+2. Déclarer `roots.rec` dans `reo_covid.conf` (sorties dans un bac à sable, référentiels lus sur HOM) et une base SQL Server de recette dans `mssql.rec`, ou désactiver les étapes `mssql_*` et comparer les DataFrames avant insertion.
+3. Comparer agrégats, conso, fait UV et fichiers du dépôt AJUST avec `docs/recette_comparaison.sql`.
+4. Points d'attention : chemin du SV lu par J1 en production (anomalie 1 de l'analyse), montants de 100 000 et plus dans la conso MyREO, taux FQM / FYM, arrondis `DECIMAL32` des effectifs, format des montants dans les fichiers texte.
+
+## 12. Tests
+
+`mvn test` lance 199 tests. `ConfFilesSpec` et `CovidConfFileSpec` contrôlent les trois fichiers de configuration. Douze scénarios de bout en bout tournent sur système de fichiers local, chacun avec le fichier de configuration de son driver :
 
 - **AJUST** : chaîne complète, reprise du seul fait UV, chaîne partielle qui conserve le dépôt ;
-- **MYREO** : premier run avec historique existant, run sans nouveau fichier, SV désactivé puis réactivé, reprise sans listing, historique absent en `FAIL` puis en `EMPTY`.
+- **MYREO** : premier run avec historique existant, run sans nouveau fichier, SV désactivé puis réactivé, reprise sans listing, historique absent en `FAIL` puis en `EMPTY` ;
+- **COVID** (base SQL Server simulée, qui trace les appels et garde les lignes insérées) : chaîne complète des 17 étapes, fichier de pilotage sans ligne active et procédure en échec (`WARN` puis `FAIL`), reprise sans SQL Server ni table NRG -> PCI (aucune connexion ouverte), sortie dans une racine protégée.
 
-La couverture est mesurée par `mvn -P coverage scoverage:report`, hors package `job` : 94,7 % des instructions et 86,6 % des branches.
+Les règles de chaque job COVID sont testées par mapper (`MainMapperCovid*Spec`), dont les deux ventilations sur un même jeu de paramètres ; l'appel de procédure JDBC et la lecture du mot de passe dans un magasin jceks le sont dans `MssqlGatewaySpec`.
+
+La couverture est mesurée par `mvn scoverage:report` : 92,2 % des instructions et 78,6 % des branches, drivers compris. Sonar exclut les drivers de la couverture, via la propriété `sonar.coverage.exclusions` du pom. L'implémentation JDBC de la lecture et de l'insertion n'est pas couverte : elle demande une base SQL Server.

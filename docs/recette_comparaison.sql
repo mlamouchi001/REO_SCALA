@@ -1,15 +1,17 @@
 -- =====================================================================================================
--- Recette parallele Talend / Scala des chaines REO AJUST (blocs 1 a 6) et MYREO (blocs 7 et 8) (spark-sql)
+-- Recette parallele Talend / Scala des chaines REO AJUST (blocs 1 a 6), MYREO (blocs 7 et 8) et COVID
+-- (blocs 9 a 13) (spark-sql)
 --
 -- Lancement : spark-sql -d TALEND=/fhml -d SCALA=/fhml/app/bsy_a2918/recette_reo -d DTYPE=<type actif>
 --                       -d DTYPE_ARCH=<type archive> -d RD_DAY=<yyyyMMdd> -f recette_comparaison.sql
 --   ${TALEND} : prefixe d'environnement des sorties Talend HOM (/fhml/app/..., /fhml/srv/..., /fhml/uv/...).
 --   ${SCALA}  : racine du bac a sable de la recette, organisee comme les exemples roots.rec de
---               conf/reo_ajust.conf et conf/reo_myreo.conf (sous-dossiers raw, sv_reo, bv_reo, bv, wp_reo, uv_reo).
+--               conf/reo_ajust.conf, conf/reo_myreo.conf et conf/reo_covid.conf (sous-dossiers raw, sv_reo,
+--               erk_sv_reo, bv_reo, bv, wp_reo, uv_reo).
 --
 -- Chaque bloc renvoie deux compteurs : lignes Talend absentes de Scala, lignes Scala absentes de Talend.
 -- EXCEPT ALL compare des multi-ensembles : un doublon en trop est detecte, contrairement a EXCEPT.
--- Resultat attendu : 0 / 0 partout, sauf ecarts documentes (docs/CONCEPTION_MIGRATION_SCALA.md, chap. 9).
+-- Resultat attendu : 0 / 0 partout, sauf ecarts documentes (docs/CONCEPTION_MIGRATION_SCALA.md, chap. 10).
 -- =====================================================================================================
 
 -- ------------------------------------------------------------------------------------------------------
@@ -156,3 +158,95 @@ FROM (SELECT * FROM myreo_ref_talend EXCEPT ALL SELECT * FROM myreo_ref_scala)
 UNION ALL
 SELECT 'MYREO REF scala_moins_talend', COUNT(*)
 FROM (SELECT * FROM myreo_ref_scala EXCEPT ALL SELECT * FROM myreo_ref_talend);
+
+-- ======================================================================================================
+-- Chaine COVID (LUD_FLOW_AJUSTEMENT_REO_COVID). Prealable : sauvegarder les sorties Talend avant le run Scala
+-- (fichier SV MyREO, mp_nrg_pci, wp_reo/my_reo, wp_reo/ajust/aju, dc_conso/my_reo), que les deux chaines
+-- ecrasent. Les montants des fichiers de ventilation sont compares en valeur : le format texte des BigDecimal
+-- Talend (plein ou scientifique) n'est pas connu.
+-- ======================================================================================================
+
+-- ------------------------------------------------------------------------------------------------------
+-- 9. Table NRG -> PCI (dossiers CSV equal et diff)
+-- ------------------------------------------------------------------------------------------------------
+CREATE OR REPLACE TEMPORARY VIEW covid_mp_talend USING text
+  OPTIONS (path '${TALEND}/srv/bsy_a2918/srv_bsy_a2918_basycout/sv_reo/erk_a2832/ajust/mp_nrg_pci/{equal,diff}');
+CREATE OR REPLACE TEMPORARY VIEW covid_mp_scala USING text
+  OPTIONS (path '${SCALA}/erk_sv_reo/ajust/mp_nrg_pci/{equal,diff}');
+SELECT 'COVID MP talend_moins_scala' AS controle, COUNT(*) AS nb
+FROM (SELECT * FROM covid_mp_talend EXCEPT ALL SELECT * FROM covid_mp_scala)
+UNION ALL
+SELECT 'COVID MP scala_moins_talend', COUNT(*)
+FROM (SELECT * FROM covid_mp_scala EXCEPT ALL SELECT * FROM covid_mp_talend);
+
+-- ------------------------------------------------------------------------------------------------------
+-- 10. Agregats des ventilations : axes en texte, montant en DECIMAL(32,16) (dernier champ en MyREO, 16e en SQL Server)
+-- ------------------------------------------------------------------------------------------------------
+CREATE OR REPLACE TEMPORARY VIEW covid_agg_myreo_talend AS
+SELECT concat_ws(';', slice(split(value, ';'), 1, 9)) AS axes, CAST(split(value, ';')[9] AS DECIMAL(32,16)) AS montant
+FROM text.`${TALEND}/app/bsy_a2918/wp_reo/my_reo/aju/agg/aju_agg.csv`;
+CREATE OR REPLACE TEMPORARY VIEW covid_agg_myreo_scala AS
+SELECT concat_ws(';', slice(split(value, ';'), 1, 9)) AS axes, CAST(split(value, ';')[9] AS DECIMAL(32,16)) AS montant
+FROM text.`${SCALA}/wp_reo/my_reo/aju/agg/aju_agg.csv`;
+SELECT 'COVID AGG MyREO talend_moins_scala' AS controle, COUNT(*) AS nb
+FROM (SELECT * FROM covid_agg_myreo_talend EXCEPT ALL SELECT * FROM covid_agg_myreo_scala)
+UNION ALL
+SELECT 'COVID AGG MyREO scala_moins_talend', COUNT(*)
+FROM (SELECT * FROM covid_agg_myreo_scala EXCEPT ALL SELECT * FROM covid_agg_myreo_talend);
+
+CREATE OR REPLACE TEMPORARY VIEW covid_agg_ajust_talend AS
+SELECT concat_ws(';', slice(split(value, ';'), 1, 15), slice(split(value, ';'), 17, 3)) AS axes,
+       CAST(split(value, ';')[15] AS DECIMAL(32,16)) AS montant
+FROM text.`${TALEND}/app/bsy_a2918/wp_reo/ajust/aju/agg/aju_agg.csv`;
+CREATE OR REPLACE TEMPORARY VIEW covid_agg_ajust_scala AS
+SELECT concat_ws(';', slice(split(value, ';'), 1, 15), slice(split(value, ';'), 17, 3)) AS axes,
+       CAST(split(value, ';')[15] AS DECIMAL(32,16)) AS montant
+FROM text.`${SCALA}/wp_reo/ajust/aju/agg/aju_agg.csv`;
+SELECT 'COVID AGG SQL Server talend_moins_scala' AS controle, COUNT(*) AS nb
+FROM (SELECT * FROM covid_agg_ajust_talend EXCEPT ALL SELECT * FROM covid_agg_ajust_scala)
+UNION ALL
+SELECT 'COVID AGG SQL Server scala_moins_talend', COUNT(*)
+FROM (SELECT * FROM covid_agg_ajust_scala EXCEPT ALL SELECT * FROM covid_agg_ajust_talend);
+
+-- ------------------------------------------------------------------------------------------------------
+-- 11. Conso MyREO du type actif (Parquet, 11 colonnes)
+-- ------------------------------------------------------------------------------------------------------
+CREATE OR REPLACE TEMPORARY VIEW covid_conso_talend USING parquet
+  OPTIONS (path '${TALEND}/app/bsy_a2918/wp_reo/my_reo/conso_reo/${DTYPE}');
+CREATE OR REPLACE TEMPORARY VIEW covid_conso_scala USING parquet
+  OPTIONS (path '${SCALA}/wp_reo/my_reo/conso_reo/${DTYPE}');
+SELECT 'COVID CONSO talend_moins_scala' AS controle, COUNT(*) AS nb
+FROM (SELECT * FROM covid_conso_talend EXCEPT ALL SELECT * FROM covid_conso_scala)
+UNION ALL
+SELECT 'COVID CONSO scala_moins_talend', COUNT(*)
+FROM (SELECT * FROM covid_conso_scala EXCEPT ALL SELECT * FROM covid_conso_talend);
+
+-- ------------------------------------------------------------------------------------------------------
+-- 12. Fait UV MyREO (15 colonnes, montant en 11e position compare en valeur)
+-- ------------------------------------------------------------------------------------------------------
+CREATE OR REPLACE TEMPORARY VIEW covid_uv_talend AS
+SELECT concat_ws(';', slice(split(value, ';'), 1, 10), slice(split(value, ';'), 12, 4)) AS cles,
+       CAST(split(value, ';')[10] AS DECIMAL(32,16)) AS montant
+FROM text.`${TALEND}/uv/bsy_a2918/uv_bsy_a2918_basycout/uv_reo/dc_conso/my_reo/conso_reo.csv`;
+CREATE OR REPLACE TEMPORARY VIEW covid_uv_scala AS
+SELECT concat_ws(';', slice(split(value, ';'), 1, 10), slice(split(value, ';'), 12, 4)) AS cles,
+       CAST(split(value, ';')[10] AS DECIMAL(32,16)) AS montant
+FROM text.`${SCALA}/uv_reo/dc_conso/my_reo/conso_reo.csv`;
+SELECT 'COVID UV talend_moins_scala' AS controle, COUNT(*) AS nb
+FROM (SELECT * FROM covid_uv_talend EXCEPT ALL SELECT * FROM covid_uv_scala)
+UNION ALL
+SELECT 'COVID UV scala_moins_talend', COUNT(*)
+FROM (SELECT * FROM covid_uv_scala EXCEPT ALL SELECT * FROM covid_uv_talend);
+
+-- ------------------------------------------------------------------------------------------------------
+-- 13. Extraction SQL Server et depot AJUST (texte, memes formats des deux cotes)
+-- ------------------------------------------------------------------------------------------------------
+CREATE OR REPLACE TEMPORARY VIEW covid_aju_talend USING text
+  OPTIONS (path '${TALEND}/app/bsy_a2918/wp_reo/ajust/aju/{sql/aju.csv,archive/sql/sql_reo.csv,archive/agg/agg_reo.csv}');
+CREATE OR REPLACE TEMPORARY VIEW covid_aju_scala USING text
+  OPTIONS (path '${SCALA}/wp_reo/ajust/aju/{sql/aju.csv,archive/sql/sql_reo.csv,archive/agg/agg_reo.csv}');
+SELECT 'COVID AJU et depot talend_moins_scala' AS controle, COUNT(*) AS nb
+FROM (SELECT * FROM covid_aju_talend EXCEPT ALL SELECT * FROM covid_aju_scala)
+UNION ALL
+SELECT 'COVID AJU et depot scala_moins_talend', COUNT(*)
+FROM (SELECT * FROM covid_aju_scala EXCEPT ALL SELECT * FROM covid_aju_talend);

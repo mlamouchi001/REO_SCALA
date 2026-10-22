@@ -2,9 +2,9 @@ package com.bsy.datalake.reo.common
 
 import com.bsy.datalake.reo.mapping.{MainMapperAjustConsoArch, MainMapperAjustConsoBv}
 import com.bsy.datalake.reo.mapping.{MainMapperAjustConsoGtsSkipper, MainMapperAjustDcConsoUv}
-import com.bsy.datalake.reo.utility.{DataTypeEntry, DataTypePlan}
+import com.bsy.datalake.reo.utility.DataTypePlan
 import com.typesafe.config.Config
-import org.apache.spark.sql.{DataFrame, Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
 
 /**
@@ -17,16 +17,7 @@ class AjustReoRunner(fetchSource: FetchSourceAjustReo)(implicit sparkSession: Sp
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def runDataTypePlan(): DataTypePlan = {
-    def str(r: Row, i: Int): String = if (r.isNullAt(i)) null else r.getString(i)
-    val entries = ref_data_type_sv_dt.collect().toSeq.map { r =>
-      DataTypeEntry(
-        codeLvl1 = str(r, 0),
-        labelLvl1 = str(r, 1),
-        codeLvl2 = str(r, 2),
-        labelLvl2 = str(r, 3),
-        isActive = if (r.isNullAt(4)) None else Some(r.getInt(4)))
-    }
-    val plan = DataTypePlan.from(entries)
+    val plan = DataTypePlan.fromDataFrame(ref_data_type_sv_dt)
     log.info(s"Plan des types de donnees : $plan")
     plan
   }

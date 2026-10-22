@@ -73,8 +73,11 @@ class DataWriter(conf: ReoConf) extends Serializable {
    *  - Dataset vide -> fichier vide (Talend creait le fichier avant la premiere ligne).
    * Retourne le chemin ecrit.
    */
-  def writeSingleTextFile(lines: Dataset[String], table: String): String = {
-    val target = conf.outputPath(table)
+  def writeSingleTextFile(lines: Dataset[String], table: String): String =
+    writeSingleTextFileAt(lines, table, conf.outputPath(table))
+
+  /** Comme writeSingleTextFile, vers un fichier `target` explicite (fichier d'un dossier de sortie de `table`). */
+  def writeSingleTextFileAt(lines: Dataset[String], table: String, target: String): String = {
     assertNotProtected(table, target)
     val targetPath = new Path(target)
     val fs = Utils.fileSystem(target, lines.sparkSession.sparkContext.hadoopConfiguration)

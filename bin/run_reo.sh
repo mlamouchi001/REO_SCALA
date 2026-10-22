@@ -3,12 +3,13 @@
 # Lancement d'une chaine REO : remplace les scripts *_run.sh des jobs Talend
 #   ajust : LUD_AJU_ORCHESTRATION_DELTA_REO     -> com.bsy.datalake.reo.job.MainDriverAjustReo
 #   myreo : LUD_MYREO_ORCHESTRATION_DATA_TO_SV  -> com.bsy.datalake.reo.job.MainDriverMyReo
+#   covid : LUD_FLOW_AJUSTEMENT_REO_COVID       -> com.bsy.datalake.reo.job.MainDriverCovidReo
 #
 # Usage : run_reo.sh <chaine> <env> <conf_hdfs> [--conf spark.x=y ...]
-#   chaine    : ajust | myreo
+#   chaine    : ajust | myreo | covid
 #   env       : dev | int | hom | prd | rec
 #   conf_hdfs : chemin HDFS du fichier de configuration du driver de la chaine :
-#               reo_ajust.conf pour ajust, reo_myreo.conf pour myreo
+#               reo_ajust.conf pour ajust, reo_myreo.conf pour myreo, reo_covid.conf pour covid
 #               (ex. hdfs:///prd/app/bsy_a2918/conf/reo_ajust.conf)
 # Kerberos  : variables REO_PRINCIPAL et REO_KEYTAB (equivalent des contextes PrincipalProject_* et
 #             keytabProject_* des jobs Talend).
@@ -16,13 +17,15 @@
 #
 # Ressources ajust : reprises des jobs Spark Talend (driver 16g / 4 coeurs, executeurs 4 coeurs,
 # allocation dynamique). Ressources myreo : reduites, la chaine Talend etait faite de jobs Standard
-# (JVM de 1 Go) et traite un fichier d'extraction a la fois. A ajuster apres une premiere mesure.
+# (JVM de 1 Go) et traite un fichier d'extraction a la fois. Ressources covid : celles des jobs Spark Talend
+# de la chaine (driver 16g / 4 coeurs). Mot de passe SQL Server de la chaine covid : magasin jceks declare dans
+# reo_covid.conf, jamais sur la ligne de commande. A ajuster apres une premiere mesure.
 # ======================================================================================================
 set -eu
 
-CHAIN="${1:?chaine attendue : ajust | myreo}"
+CHAIN="${1:?chaine attendue : ajust | myreo | covid}"
 ENV="${2:?env attendu : dev | int | hom | prd | rec}"
-CONF="${3:?chemin HDFS du fichier de configuration attendu (reo_ajust.conf ou reo_myreo.conf)}"
+CONF="${3:?chemin HDFS du fichier de configuration attendu (reo_ajust.conf, reo_myreo.conf ou reo_covid.conf)}"
 shift 3
 
 BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -45,6 +48,9 @@ case "$CHAIN" in
   myreo)
     CLASS="com.bsy.datalake.reo.job.MainDriverMyReo"
     DRIVER_MEM="2g"; DRIVER_CORES=1; EXEC_CORES=2; EXEC_MEM="2g"; PARALLELISM=4 ;;
+  covid)
+    CLASS="com.bsy.datalake.reo.job.MainDriverCovidReo"
+    DRIVER_MEM="16g"; DRIVER_CORES=4; EXEC_CORES=4 ;;
   *) echo "Chaine inconnue : $CHAIN" >&2; exit 2 ;;
 esac
 

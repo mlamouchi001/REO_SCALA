@@ -338,84 +338,86 @@ object ViewsAjustReo {
    * Pas de correspondance -> id null : les sorties Talend sont des Integer nullables. Exception :
    * superphase_id, int primitif chez Talend, controle non nul par DataQuality.failIfNull.
    * Hints BROADCAST : equivalent des "Use replicated join" coches dans le job (petits referentiels).
+   * `p` = prefixe des vues (uv pour AJUST, covid_uv pour le fait MyREO de la chaine COVID, aux tMap identiques) :
+   * <p>_super_phase_checked et <p>_dim_<referentiel>.
    */
-  val uv_dc_conso_sql: String =
+  def dcConsoSql(p: String): String =
     s"""
        |WITH
        |d_super_phase AS (
        |  SELECT super_phase_code, MIN(superphase_Id) AS superphase_id
-       |  FROM $V_UV_DIM_SUPER_PHASE
+       |  FROM ${p}_dim_super_phase
        |  GROUP BY super_phase_code
        |),
        |d_phase AS (
        |  SELECT phase_code, MIN(phase_id) AS phase_id
-       |  FROM $V_UV_DIM_PHASE
+       |  FROM ${p}_dim_phase
        |  WHERE phase_code IS NOT NULL AND TRIM(phase_code) <> ''
        |  GROUP BY phase_code
        |),
        |d_pci AS (
        |  SELECT Numero_compte, MIN(pci_id) AS pci_id
-       |  FROM $V_UV_DIM_PCI
+       |  FROM ${p}_dim_pci
        |  WHERE Numero_compte IS NOT NULL AND TRIM(Numero_compte) <> ''
        |  GROUP BY Numero_compte
        |),
        |d_periode AS (
        |  SELECT periode_annee, periode_mois, MIN(periode_id) AS periode_id
-       |  FROM $V_UV_DIM_PERIODE
+       |  FROM ${p}_dim_periode
        |  GROUP BY periode_annee, periode_mois
        |),
        |d_activite AS (
        |  SELECT code_centre_activite, MIN(activite_id) AS activite_id
-       |  FROM $V_UV_DIM_ACTIVITE
+       |  FROM ${p}_dim_activite
        |  WHERE code_centre_activite IS NOT NULL AND TRIM(code_centre_activite) <> ''
        |  GROUP BY code_centre_activite
        |),
        |d_budget AS (
        |  SELECT CODE_CENTRE_ACTIVITE, MIN(BUDGET_ID) AS budget_id
-       |  FROM $V_UV_DIM_PYRAMIDE_BUDG
+       |  FROM ${p}_dim_pyramide_budg
        |  WHERE CODE_CENTRE_ACTIVITE IS NOT NULL AND TRIM(CODE_CENTRE_ACTIVITE) <> ''
        |  GROUP BY CODE_CENTRE_ACTIVITE
        |),
        |d_cumul AS (
        |  SELECT cumul_code, MIN(cumul_id) AS cumul_id
-       |  FROM $V_UV_DIM_CUMUL
+       |  FROM ${p}_dim_cumul
        |  WHERE cumul_code IS NOT NULL AND TRIM(cumul_code) <> ''
        |  GROUP BY cumul_code
        |),
        |d_supervision AS (
        |  SELECT GEN14, MIN(supervision_id) AS supervision_id
-       |  FROM $V_UV_DIM_SUPERVISION
+       |  FROM ${p}_dim_supervision
        |  GROUP BY GEN14
        |),
        |d_conversion AS (
        |  SELECT conversion_code_5, MIN(conversion_id) AS conversion_id
-       |  FROM $V_UV_DIM_CONVERSION
+       |  FROM ${p}_dim_conversion
        |  WHERE conversion_code_5 IS NOT NULL AND TRIM(conversion_code_5) <> ''
        |  GROUP BY conversion_code_5
        |),
        |d_data_type AS (
        |  SELECT data_type_code_lvl_2, MIN(data_type_id) AS data_type_id
-       |  FROM $V_UV_DIM_DATA_TYPE
+       |  FROM ${p}_dim_data_type
        |  GROUP BY data_type_code_lvl_2
        |),
        |d_data_source AS (
        |  SELECT data_source_code, MIN(data_source_id) AS data_source_id
-       |  FROM $V_UV_DIM_DATA_SOURCE
+       |  FROM ${p}_dim_data_source
        |  GROUP BY data_source_code
        |),
        |d_gts_skipper AS (
        |  SELECT code_gts_n2, MIN(gts_skipper_id) AS gts_skipper_id
-       |  FROM $V_UV_DIM_GTS_SKIPPER
+       |  FROM ${p}_dim_gts_skipper
        |  GROUP BY code_gts_n2
        |),
        |d_gts_type_ca AS (
        |  SELECT code_type_ca, MIN(gts_type_ca_id) AS gts_type_ca_id
-       |  FROM $V_UV_DIM_GTS_TYPE_CA
+       |  FROM ${p}_dim_gts_type_ca
        |  GROUP BY code_type_ca
        |),
        |d_classification AS (
        |  SELECT Code_Classification, MIN(Classification_Id) AS classification_id
-       |  FROM $V_UV_DIM_CLASSIFICATION
+       |  FROM ${p}_dim_classification
        |  GROUP BY Code_Classification
        |)
        |SELECT /*+ BROADCAST(sp, ph, pc, pe, ac, bg, cu, su, cv, dt, ds, gs, gt, cl) */
@@ -434,7 +436,7 @@ object ViewsAjustReo {
        |  gs.gts_skipper_id,
        |  gt.gts_type_ca_id,
        |  cl.classification_id  AS Classification_Id
-       |FROM $V_UV_SUPER_PHASE_CHECKED f
+       |FROM ${p}_super_phase_checked f
        |-- tMap_6  : super-phase (cle super_phase_code, sans TRIM)
        |LEFT JOIN d_super_phase sp ON sp.super_phase_code = f.super_phase_code
        |-- tMap_1  : phase
@@ -450,8 +452,8 @@ object ViewsAjustReo {
        |LEFT JOIN d_budget bg      ON bg.CODE_CENTRE_ACTIVITE = TRIM(f.slm_activite_code)
        |-- tMap_8  : cumul
        |LEFT JOIN d_cumul cu       ON cu.cumul_code = TRIM(f.cumul_code)
-       |-- tMap_9  : entite (supervision GEN14) ; entite vide -> 'NA'
-       |LEFT JOIN d_supervision su ON su.GEN14 = CASE WHEN TRIM(f.code_entite) = '' THEN 'NA'
+       |-- tMap_9  : entite (supervision GEN14) ; entite vide ou nulle -> 'NA' (isEmpty(trim(x)))
+       |LEFT JOIN d_supervision su ON su.GEN14 = CASE WHEN COALESCE(TRIM(f.code_entite), '') = '' THEN 'NA'
        |                                              ELSE TRIM(f.code_entite) END
        |-- tMap_10 : conversion (niveau 5)
        |LEFT JOIN d_conversion cv  ON cv.conversion_code_5 = TRIM(f.code_conversion)
@@ -466,4 +468,6 @@ object ViewsAjustReo {
        |-- tMap_14 : classification (sans TRIM)
        |LEFT JOIN d_classification cl ON cl.Code_Classification = f.Code_classification
        |""".stripMargin
+
+  val uv_dc_conso_sql: String = dcConsoSql("uv")
 }

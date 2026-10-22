@@ -1,14 +1,16 @@
 # BSY_REO
 
-Migration Scala / Spark de deux chaînes Talend REO du projet BSY_A2918, dans un même projet :
+Migration Scala / Spark de trois chaînes Talend REO du projet BSY_A2918, dans un même projet :
 
 - **AJUST** (`LUD_AJU_ORCHESTRATION_DELTA_REO`) : dispatch des fichiers d'ajustement REO, conso BV par type de données, enrichissement GTS Skipper, fait `dc_conso` en Usage View et archivage des types inactifs ;
-- **MYREO** (`LUD_MYREO_ORCHESTRATION_DATA_TO_SV`) : détection des nouvelles extractions de l'outil MyREO déposées en raw, puis production du fichier SV `Extract_Ajus_Outil_REO_pour_BSY_REO.csv` pour les types de données actifs.
+- **MYREO** (`LUD_MYREO_ORCHESTRATION_DATA_TO_SV`) : détection des nouvelles extractions de l'outil MyREO déposées en raw, puis production du fichier SV `Extract_Ajus_Outil_REO_pour_BSY_REO.csv` pour les types de données actifs ;
+- **COVID** (`LUD_FLOW_AJUSTEMENT_REO_COVID`) : table de correspondance NRG -> PCI ; bloc REOMAKER (fichier SV, ventilation des ajustements, conso, enrichissement GTS, fait UV, export vers SQL Server) ; ventilation des ajustements saisis dans SQL Server, export vers SQL Server et alimentation du dépôt de la chaîne AJUST.
 
 Conception reprise du template `FDA_TEMPLATE_PROJECT_SCALA` et du projet `EXP_ENG_FRG_SUV` : Driver, FetchSource, Runner, Mappers, requêtes Spark SQL, DataWriter. Un driver par chaîne, socle commun.
 
 - Analyse du job Talend AJUST : [docs/ANALYSE_TALEND_LUD_AJU_ORCHESTRATION_DELTA_REO.md](docs/ANALYSE_TALEND_LUD_AJU_ORCHESTRATION_DELTA_REO.md)
 - Analyse du job Talend MYREO : [docs/ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md](docs/ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md)
+- Analyse du job Talend COVID : [docs/ANALYSE_TALEND_LUD_FLOW_AJUSTEMENT_REO_COVID.md](docs/ANALYSE_TALEND_LUD_FLOW_AJUSTEMENT_REO_COVID.md)
 - Conception de la cible : [docs/CONCEPTION_MIGRATION_SCALA.md](docs/CONCEPTION_MIGRATION_SCALA.md)
 - Requêtes de recette Talend contre Scala : [docs/recette_comparaison.sql](docs/recette_comparaison.sql)
 
@@ -17,27 +19,29 @@ Conception reprise du template `FDA_TEMPLATE_PROJECT_SCALA` et du projet `EXP_EN
 ```
 reo_scala
 ├── assembly/                    # fat jar + bundle zip de livraison
-├── bin/run_reo.sh               # lancement spark-submit : chaîne (ajust | myreo) et environnement
+├── bin/run_reo.sh               # lancement spark-submit : chaîne (ajust | myreo | covid) et environnement
 ├── conf/reo_ajust.conf          # configuration du driver AJUST, tous environnements
 ├── conf/reo_myreo.conf          # configuration du driver MYREO, tous environnements
+├── conf/reo_covid.conf          # configuration du driver COVID, tous environnements (SQL Server compris)
 ├── docs/                        # analyses Talend, conception, recette
 ├── jenkins/Jenkinsfile-*        # pipelines SG dev / fhml / prd (repris du template)
 ├── src/main/scala/com/bsy/datalake/reo/
-│   ├── job/                     # MainDriverAjustReo, MainDriverMyReo : orchestration des étapes
+│   ├── job/                     # MainDriverAjustReo, MainDriverMyReo, MainDriverCovidReo : orchestration des étapes
 │   ├── common/                  # FetchSource, Runner et contrats par chaîne, StepRunner, session Spark
-│   ├── mapping/                 # un mapper par job Talend de transformation + ViewsAjustReo / ViewsMyReo (Spark SQL)
-│   └── utility/                 # schémas, conf, écriture, dispatch AJUST, catalogue MYREO, qualité
-└── src/test/scala/...           # tests unitaires et tests de bout en bout des deux chaînes
+│   ├── mapping/                 # un mapper par job Talend de transformation + ViewsAjustReo / ViewsMyReo / ViewsCovidReo (Spark SQL)
+│   └── utility/                 # schémas, conf, écriture, dispatch AJUST, catalogue MYREO, accès SQL Server, qualité
+└── src/test/scala/...           # tests unitaires et tests de bout en bout des trois chaînes
 ```
 
 ## Build et tests
 
 ```bash
-mvn clean package                    # tests, fat jar, bundle zip, rapport scalastyle
-mvn -P coverage scoverage:report     # couverture pour Sonar
+mvn clean package                         # tests, fat jar, bundle zip
+mvn scoverage:report                      # couverture pour Sonar (target/scoverage.xml)
+mvn -Dspark-version=3.3.2 clean package   # hors réseau SG : Spark public au lieu de la version interne
 ```
 
-JDK 8, 11 ou 17. Spark 3.3 et Scala 2.12 sont fournis par le cluster (scope `provided`).
+JDK 8, comme la CI SG : le pom lance les tests Spark dans la JVM de Maven, sans les options add-opens qu’exigerait un JDK 17. Spark et Hadoop sont fournis par le cluster (scope `provided`) ; la version Spark du pom est la distribution interne SG, résolue par l’Artifactory SG. Les rapports de tests JUnit sont écrits dans `target/surefire-reports/jUnitResults`.
 
 ## Lancement
 
@@ -46,9 +50,16 @@ export REO_PRINCIPAL=<principal Kerberos applicatif>
 export REO_KEYTAB=<chemin du keytab>
 bin/run_reo.sh ajust prd hdfs:///<chemin>/reo_ajust.conf
 bin/run_reo.sh myreo prd hdfs:///<chemin>/reo_myreo.conf
+bin/run_reo.sh covid prd hdfs:///<chemin>/reo_covid.conf
 ```
 
-Chaque driver attend deux arguments : l'environnement (`dev`, `int`, `hom`, `prd`) et le chemin HDFS de son fichier de configuration. Chaque driver a le sien : `reo_ajust.conf` pour AJUST, `reo_myreo.conf` pour MYREO. Le script choisit la classe et les ressources de la chaîne.
+Chaque driver attend deux arguments : l'environnement (`dev`, `int`, `hom`, `prd`) et le chemin HDFS de son fichier de configuration. Chaque driver a le sien : `reo_ajust.conf` pour AJUST, `reo_myreo.conf` pour MYREO, `reo_covid.conf` pour COVID. Le script choisit la classe et les ressources de la chaîne.
+
+Avant le premier lancement de la chaîne COVID, dans le `reo_covid.conf` déposé sur HDFS (le dépôt Git est public, ces valeurs n'y figurent pas) :
+
+1. remplacer les `A_RENSEIGNER` de `dfin.bsy.reo.mssql.<env>` (serveur et compte) par les valeurs des contextes Talend `cxnMSSQL_*` ;
+2. créer le magasin du mot de passe, lisible par le compte applicatif :
+   `hadoop credential create bsy.reo.mssql.password -provider jceks://hdfs/<env>/app/bsy_a2918/conf/reo_mssql.jceks`.
 
 ## Étapes et reprise
 
@@ -77,4 +88,28 @@ Chaîne MYREO (`MainDriverMyReo`) :
 
 Les nouveaux fichiers ne sont marqués lus que si le fichier SV a été écrit dans le même run. Avec plusieurs nouveaux fichiers, seul le dernier alimente le SV, comme chez Talend.
 
-Chaque étape des deux chaînes écrit une ligne `STEP|étape|statut|durée|détail` dans les logs du driver.
+Chaîne COVID (`MainDriverCovidReo`) :
+
+| Étape | Interrupteur `dfin.bsy.reo.*` | Remplace |
+|---|---|---|
+| nrg_pci_map | `nrg_pci_map_trt` | LUD_AJUST_REO_NRG_PCI_MAP_TO_SV_SPARK |
+| reomaker_check | toujours exécutée | LUD_FLOW_MY_REO_TOOL : sans ligne `is_active = 1`, le bloc MyREO est sauté |
+| reomaker_to_sv | `reomaker_to_sv_trt` | MYREO_ORCHESTRATION_DATA_TO_SV -> MYREO_REO_RD_TO_SV |
+| myreo_calculation | `myreo_calculation_trt` | LUD_AJUST_REO_CALCULATION_SPARK |
+| myreo_plan_data_types | toujours exécutée | MYREO_ORCHESTRATION_DTYPE |
+| myreo_conso_bv | `myreo_conso_bv_trt` | LUD_AJUST_REO_CONSO_TO_BV_SPARK |
+| myreo_gts_skipper | `myreo_gts_skipper_trt` | REO_CONSO_ADD_GTS_SKIPPER_TO_BV_SPARK_MY_REO |
+| myreo_dc_conso_uv | `myreo_dc_conso_uv_trt` | REO_CONSO_ADD_GTS_SKIPPER_ODS_TO_UV_SPARK_MY_REO |
+| myreo_archive_inactive | `myreo_archive_inactive_trt` | AJUST_REO_CONSO_TO_BV_SPARK_ARCH |
+| mssql_conso_delta | `mssql_conso_delta_trt` | LUD_EXP_SQLDB_CONSO_DATA_REO_FROM_UV_TO_MSSQL_STOCK + TRUNCATE_CONSO_REO_PROC_MSSQL |
+| mssql_cube | `mssql_cube_trt` | CUBE_PROC_MSSQL |
+| mssql_aju_import | `mssql_aju_import_trt` | LUD_REO_AJU_FROM_MSSQL_TO_HDFS |
+| mssql_truncate_import | `mssql_truncate_import_trt` | LUD_REO_TRUNCATE_HDFS_AJUSTEMENT_TO_FACT_TABLE |
+| ajust_calculation | `ajust_calculation_trt` | LUD_REO_AJUST_CALCULATION_SPARK |
+| mssql_aju_export | `mssql_aju_export_trt` | LUD_REO_EXP_AJU_ADD_GTS_SKIPPER_FROM_HDFS_TO_MSSQL |
+| mssql_send_to_fact | `mssql_send_to_fact_trt` | LUD_REO_SEND_HDFS_AJUSTEMENT_TO_FACT |
+| ajust_to_depot | `ajust_to_depot_trt` | LUD_REO_AJUST_ODS_TO_ARCHIVE : dépôt lu par la chaîne AJUST |
+
+En désactivant les étapes `mssql_*`, la chaîne tourne sans se connecter à SQL Server et relit sur disque la dernière extraction `aju.csv`.
+
+Chaque étape des trois chaînes écrit une ligne `STEP|étape|statut|durée|détail` dans les logs du driver.
