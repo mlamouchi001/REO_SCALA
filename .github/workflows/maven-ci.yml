@@ -59,20 +59,44 @@ jobs:
       skip-tests: ${{ inputs.skip_tests }}
       is-snapshot: ${{ !contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
       branch_name: ${{ inputs.branch_name }}
-      # Les trois drivers lances par bin/run_reo.sh doivent etre dans le jar publie
-      expected-classes: >-
-        com.bsy.datalake.reo.job.MainDriverAjustReo,
-        com.bsy.datalake.reo.job.MainDriverMyReo,
-        com.bsy.datalake.reo.job.MainDriverReo
     secrets:
       jf-secret: ${{ secrets.JF_ACCESS_TOKEN }}
 
+  # Les trois drivers lances par bin/run_reo.sh doivent etre dans le jar construit
+  # (artefact build-artifact publie par build-project-scala.yml)
+  check-jar:
+    runs-on: [ self-hosted, linux ]
+    timeout-minutes: 10
+    needs: [ build-project ]
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifact
+          path: target/
+      - name: Check jar content
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          jars=()
+          for j in target/*.jar; do
+            case "$j" in *-sources.jar|*-javadoc.jar|*-tests.jar|target/original-*) ;; *) jars+=("$j") ;; esac
+          done
+          (( ${#jars[@]} )) || { echo "::error::Aucun jar dans build-artifact"; exit 1; }
+          content=$(for j in "${jars[@]}"; do unzip -Z1 "$j"; done)
+          ko=0
+          for c in MainDriverAjustReo MainDriverMyReo MainDriverReo; do
+            entry="com/bsy/datalake/reo/job/$c.class"
+            if grep -qxF "$entry" <<< "$content"; then echo "OK  $entry"; else echo "::error::Classe absente du jar : $entry"; ko=1; fi
+          done
+          exit $ko
+
   create-github-tag:
     uses: DTUTransverse/reusable-github-actions/.github/workflows/github-tag-creator.yml@main
-    needs: [ build-project, calculate-project-version ]
+    needs: [ check-jar, calculate-project-version ]
     if: ${{ contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
     permissions:
       contents: write
     with:
       tag-version: ${{ needs.calculate-project-version.outputs.tag-version }}
-      ref: ${{ inputs.branch_name }}
