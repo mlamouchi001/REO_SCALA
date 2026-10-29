@@ -76,7 +76,7 @@ object CovidReoConstants {
   val AJUST_DEPOT_AGG = "AJUST_DEPOT_AGG"
 
   // ------------------------------------------------------------------------------------------------
-  // SQL Server : tables et procedures stockees (schema dfin.bsy.reo.mssql.<env>.schema)
+  // SQL Server : tables et procedures stockees (schema dfin.bsy.reo.mssqlserver.<env>.schema)
   // ------------------------------------------------------------------------------------------------
   val MSSQL_TABLE_AJUSTMENT = "ajustment_reo"
   val MSSQL_TABLE_IMPORT = "hdfs_import_ajustment_reo"

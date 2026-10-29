@@ -19,10 +19,11 @@ Conception reprise du template `FDA_TEMPLATE_PROJECT_SCALA` et du projet `EXP_EN
 ```
 reo_scala
 ├── assembly/                    # fat jar + bundle zip de livraison
-├── bin/run_reo.sh               # lancement spark-submit : chaîne (ajust | myreo | covid) et environnement
+├── bin/run_reo.sh               # lancement spark3-submit : chaîne (ajust | myreo | covid) et environnement
 ├── conf/reo_ajust.conf          # configuration du driver AJUST, tous environnements
 ├── conf/reo_myreo.conf          # configuration du driver MYREO, tous environnements
 ├── conf/reo_alim.conf          # configuration du driver COVID, tous environnements (SQL Server compris)
+├── conf/vault.conf.template     # modèle du fichier vault.conf (AppRole Vault) de la chaîne COVID
 ├── docs/                        # analyses Talend, conception, recette
 ├── jenkins/Jenkinsfile-*        # pipelines SG dev / fhml / prd (repris du template)
 ├── src/main/scala/com/bsy/datalake/reo/
@@ -55,11 +56,13 @@ bin/run_reo.sh covid prd hdfs:///<chemin>/reo_alim.conf
 
 Chaque driver attend deux arguments : l'environnement (`dev`, `int`, `hom`, `prd`) et le chemin HDFS de son fichier de configuration. Chaque driver a le sien : `reo_ajust.conf` pour AJUST, `reo_myreo.conf` pour MYREO, `reo_alim.conf` pour COVID. Le script choisit la classe et les ressources de la chaîne.
 
-Avant le premier lancement de la chaîne COVID, dans le `reo_alim.conf` déposé sur HDFS (le dépôt Git est public, ces valeurs n'y figurent pas) :
+Le script lance `spark3-submit` (le jar est en Scala 2.12 ; sur CDP, `spark-submit` est Spark 2). Il refuse de soumettre si la classe du driver est absente du jar : c'est la cause d'un `ClassNotFoundException` sur YARN, avec un jar déployé plus ancien que le code.
 
-1. remplacer les `A_RENSEIGNER` de `dfin.bsy.reo.mssql.<env>` (serveur et compte) par les valeurs des contextes Talend `cxnMSSQL_*` ;
-2. créer le magasin du mot de passe, lisible par le compte applicatif :
-   `hadoop credential create bsy.reo.mssql.password -provider jceks://hdfs/<env>/app/bsy_a2918/conf/reo_mssql.jceks`.
+**SQL Server (chaîne COVID)** : même modèle que le projet PUSHSQLSERVER. Le compte et le mot de passe sont lus dans Vault (AppRole, `dfin.bsy.reo.mssqlserver` de `reo_alim.conf`), jamais dans la configuration. Avant le premier lancement :
+
+1. créer `vault.conf` sur l'edge à partir de `conf/vault.conf.template` (`roleId`, `secretId` de l'AppRole BSY_A2918), hors du dépôt Git, en `chmod 600` ;
+2. lancer avec `REO_VAULT_CONF=<chemin>/vault.conf` (défaut : `conf/vault.conf` du bundle) : le script l'envoie au driver YARN (`--files`) et positionne `vault_config_file` ;
+3. confirmer `userKey` / `passwordKey` (clés du compte BSY_REO dans le secret `kv/mssql`) et le namespace Vault, repris de PUSHSQLSERVER.
 
 ## Étapes et reprise
 

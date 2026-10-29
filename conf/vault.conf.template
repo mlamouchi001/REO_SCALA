@@ -1,0 +1,19 @@
+# =====================================================================================================
+# Modele du fichier vault.conf lu par MainDriverReo (meme format que le projet PUSHSQLSERVER).
+# Copier en vault.conf sur l'edge, hors du depot Git, lisible par le seul compte applicatif (chmod 600),
+# puis lancer : REO_VAULT_CONF=<chemin>/vault.conf bin/run_reo.sh covid <env> <conf>
+# bin/run_reo.sh l'envoie au driver YARN (--files) et positionne vault_config_file=vault.conf.
+# =====================================================================================================
+vault {
+  roleId   = "A_RENSEIGNER"      # AppRole du compte applicatif BSY_A2918
+  secretId = "A_RENSEIGNER"
+
+  retryMaxAttempts = 3           # tentatives avant le secours
+  retryDelayMs     = 1000
+
+  # Secours si Vault est injoignable : jamais en production.
+  fallback {
+    enabled = false
+    # secrets { user = "...", password = "..." }
+  }
+}

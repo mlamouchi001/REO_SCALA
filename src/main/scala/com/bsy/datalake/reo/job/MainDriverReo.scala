@@ -93,7 +93,7 @@ object MainDriverReo {
     SparkSessionManager.applySqlConf(spark, conf.sparkSqlConf)
 
     val ctx = new Context(conf, mssqlFactory.getOrElse(
-      (c: ReoConf) => JdbcMssqlGateway.fromConf(c, spark.sparkContext.hadoopConfiguration)))
+      (c: ReoConf) => JdbcMssqlGateway.fromConf(c)))
     Seq(MP_NRG_PCI_EQUAL, MP_NRG_PCI_DIFF, MP_NRG_PCI_ODS_DIFF, MP_NRG_PCI_ODS_DIFF9, REOMAKER_SV, MYREO_VENTIL,
       MYREO_AJU_AGG, MYREO_CONSO_WP, MYREO_CONSO_ARCH, MYREO_CONSO_SKIPPER, MYREO_DC_CONSO_UV, AJUST_AJU_SQL,
       AJUST_VENTIL, AJUST_AJU_AGG, AJUST_DEPOT_SQL, AJUST_DEPOT_AGG)

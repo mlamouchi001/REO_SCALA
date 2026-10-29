@@ -26,3 +26,6 @@ Thumbs.db
 
 # Fichiers verrous Office (presentation ouverte)
 ~$*
+
+# Secrets Vault (modele : conf/vault.conf.template)
+vault.conf

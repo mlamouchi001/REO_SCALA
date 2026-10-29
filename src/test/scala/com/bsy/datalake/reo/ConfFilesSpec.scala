@@ -1,9 +1,9 @@
 package com.bsy.datalake.reo
 
 import com.bsy.datalake.reo.utility.ReoConstants.{CONF_ROOT, REF_DATA_TYPE_SV}
-import com.bsy.datalake.reo.utility.{AjustReoConstants => A, CovidReoConstants => C, DataWriter, MssqlSettings}
+import com.bsy.datalake.reo.utility.{AjustReoConstants => A, CovidReoConstants => C, DataWriter, FakeVaultManager}
+import com.bsy.datalake.reo.utility.MsSqlServerConf
 import com.bsy.datalake.reo.utility.{MyReoConstants => M, ReoConf}
-import org.apache.hadoop.conf.Configuration
 import com.typesafe.config.{Config, ConfigFactory}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -162,15 +162,19 @@ class CovidConfFileSpec extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "declarer une connexion SQL Server par environnement, a completer au deploiement" in {
+  it should "declarer la connexion SQL Server de chaque environnement sur le modele de PUSHSQLSERVER (Vault)" in {
+    val servers = Map("dev" -> ("192.88.193.30", "MSPARTBSYD100"), "int" -> ("192.199.96.205", "HBSYSQL01"),
+      "hom" -> ("192.199.96.83", "MSPARTBSYH101"), "prd" -> ("192.197.102.226", "MSPARTBSYP101"))
     envPrefixes.foreach { case (env, _) =>
-      val e = the[IllegalArgumentException] thrownBy MssqlSettings.from(new ReoConf(covid, env), new Configuration(false))
-      e.getMessage should include(s"dfin.bsy.reo.mssql.$env.server a renseigner")
-      val filled = ConfigFactory.parseString(
-        s"""dfin.bsy.reo.mssql.$env { server = "sql.$env", login = "APP" }""").withFallback(covid).resolve()
-      MssqlSettings.from(new ReoConf(filled, env), new Configuration(false)).url shouldBe
-        s"jdbc:sqlserver://sql.$env:14001;databaseName=BSY_REO;applicationName=BSY_A2918;" +
-          "encrypt=true;trustServerCertificate=true;loginTimeout=60;"
+      val vault = new FakeVaultManager(Map("user" -> "APP", "password" -> "pwd"))
+      val c = MsSqlServerConf.from(new ReoConf(covid, env), vault)
+      val (server, instance) = servers(env)
+      c.getJdbcUrl shouldBe s"jdbc:sqlserver://$server:14001;instanceName=$instance;database=BSY_REO;" +
+        "integratedSecurity=false;encrypt=true;trustServerCertificate=true"
+      vault.calls shouldBe Seq(("https://vault.cloud.socgen", "myVault/BSY_A2918_PRD_FRG_A2918_PRD", "approle",
+        "kv/mssql", 2))
+      covid.hasPath(s"$CONF_ROOT.mssqlserver.$env.user") shouldBe false
+      covid.hasPath(s"$CONF_ROOT.mssqlserver.$env.password") shouldBe false
     }
     covid.getString(s"$CONF_ROOT.mssql_on_proc_error") shouldBe "WARN"
   }

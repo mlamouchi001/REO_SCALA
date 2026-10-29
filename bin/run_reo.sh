@@ -18,8 +18,13 @@
 # Ressources ajust : reprises des jobs Spark Talend (driver 16g / 4 coeurs, executeurs 4 coeurs,
 # allocation dynamique). Ressources myreo : reduites, la chaine Talend etait faite de jobs Standard
 # (JVM de 1 Go) et traite un fichier d'extraction a la fois. Ressources covid : celles des jobs Spark Talend
-# de la chaine (driver 16g / 4 coeurs). Mot de passe SQL Server de la chaine covid : magasin jceks declare dans
-# reo_alim.conf, jamais sur la ligne de commande. A ajuster apres une premiere mesure.
+# de la chaine (driver 16g / 4 coeurs). A ajuster apres une premiere mesure.
+#
+# Chaine covid, identifiants SQL Server lus dans Vault (comme PUSHSQLSERVER) : le fichier vault.conf (roleId,
+# secretId ; modele conf/vault.conf.template) est envoye au driver YARN par --files, et vault_config_file le
+# designe. Chemin sur l'edge : REO_VAULT_CONF (defaut <bundle>/conf/vault.conf).
+# Variables surchargeables : SPARK_SUBMIT (defaut spark3-submit : le jar est en Scala 2.12, spark-submit est
+# Spark 2 sur CDP), REO_JAR (defaut : l'unique jar de <bundle>/lib).
 # ======================================================================================================
 set -eu
 
@@ -29,7 +34,21 @@ CONF="${3:?chemin HDFS du fichier de configuration attendu (reo_ajust.conf, reo_
 shift 3
 
 BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)
-JAR=$(ls "$BASE_DIR"/lib/bsy_reo-*-jar-with-dependencies.jar | head -1)
+SPARK_SUBMIT="${SPARK_SUBMIT:-spark3-submit}"
+command -v "$SPARK_SUBMIT" >/dev/null 2>&1 || { echo "ERREUR : $SPARK_SUBMIT introuvable" >&2; exit 5; }
+
+# Fat jar : REO_JAR, sinon l'unique jar de lib/ (bsy_reo-<version>.jar ou bsy_reo-<version>-jar-with-dependencies.jar)
+if [ -n "${REO_JAR:-}" ]; then
+  JAR="$REO_JAR"
+else
+  JARS=$(ls "$BASE_DIR"/lib/bsy_reo-*.jar 2>/dev/null || true)
+  if [ "$(printf '%s\n' "$JARS" | grep -c .)" -ne 1 ]; then
+    echo "ERREUR : un seul jar bsy_reo-*.jar attendu dans $BASE_DIR/lib (trouve : ${JARS:-aucun})" >&2
+    exit 3
+  fi
+  JAR="$JARS"
+fi
+[ -f "$JAR" ] || { echo "ERREUR : jar introuvable : $JAR" >&2; exit 3; }
 
 case "$ENV" in
   prd) QUEUE="PRD_CORE_BSY_A2918_APP_P";  EXEC_MEM="32g"; PARALLELISM=240 ;;
@@ -54,18 +73,39 @@ case "$CHAIN" in
   *) echo "Chaine inconnue : $CHAIN" >&2; exit 2 ;;
 esac
 
+# Garde-fou repris de PUSHSQLSERVER : la classe doit etre dans le jar (sinon ClassNotFoundException sur YARN,
+# typiquement un jar deploye plus ancien que le code). Un \r (fichier en CRLF) dans le nom est aussi refuse.
+case "$CLASS" in *"$(printf '\r')"*) echo "ERREUR : retour chariot dans le nom de classe (fichier en CRLF)" >&2; exit 4 ;; esac
+if command -v unzip >/dev/null 2>&1; then
+  if ! unzip -l "$JAR" | grep -q "$(echo "$CLASS" | tr '.' '/').class"; then
+    echo "ERREUR : $CLASS absente de $JAR (jar a reconstruire ou a redeployer)" >&2
+    exit 4
+  fi
+fi
+
+VAULT_OPTS=""
+if [ "$CHAIN" = "covid" ]; then
+  VAULT_CONF="${REO_VAULT_CONF:-$BASE_DIR/conf/vault.conf}"
+  if [ -f "$VAULT_CONF" ]; then
+    VAULT_OPTS="--files $VAULT_CONF --conf spark.yarn.appMasterEnv.vault_config_file=$(basename "$VAULT_CONF")"
+  else
+    echo "ATTENTION : $VAULT_CONF absent, les etapes SQL Server echoueront (REO_VAULT_CONF)" >&2
+  fi
+fi
+
 KERBEROS=""
 if [ -n "${REO_PRINCIPAL:-}" ] && [ -n "${REO_KEYTAB:-}" ]; then
   KERBEROS="--principal ${REO_PRINCIPAL} --keytab ${REO_KEYTAB}"
 fi
 
 # shellcheck disable=SC2086
-exec spark3-submit \
+exec "$SPARK_SUBMIT" \
   --master yarn \
   --deploy-mode cluster \
   --name "BSY_REO_$(echo "$CHAIN" | tr '[:lower:]' '[:upper:]')_${ENV}" \
   --queue "$QUEUE" \
   $KERBEROS \
+  $VAULT_OPTS \
   --driver-memory "$DRIVER_MEM" \
   --driver-cores "$DRIVER_CORES" \
   --executor-memory "$EXEC_MEM" \

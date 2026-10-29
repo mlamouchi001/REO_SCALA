@@ -1,13 +1,11 @@
 package com.bsy.datalake.reo.utility
 
 import com.bsy.datalake.reo.utility.ReoConstants.CONF_ROOT
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.security.alias.CredentialProviderFactory
-import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
+import com.microsoft.sqlserver.jdbc.{SQLServerBulkCopy, SQLServerBulkCopyOptions}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.slf4j.LoggerFactory
 
 import java.sql.{CallableStatement, Connection, DriverManager, ResultSet, Types}
-import java.util.Properties
 
 /** Retour d'une procedure stockee p_api_* : code retour (parametre 1) et message (parametre OUTPUT 2). */
 final case class ProcResult(returnCode: Option[Int], message: Option[String]) {
@@ -23,7 +21,7 @@ final case class ProcResult(returnCode: Option[Int], message: Option[String]) {
  */
 trait MssqlGateway {
 
-  /** Nom qualifie [schema].[table] (schema cxnMSSQL_Schema). */
+  /** Nom qualifie [schema].[table]. */
   def qualify(table: String): String
 
   /** Appel `{? = call [schema].<procedure>(?)}`, sans parametre d'entree, en autocommit (tMSSqlSP_1). */
@@ -32,122 +30,134 @@ trait MssqlGateway {
   /** Requete de lecture executee par Spark (une partition, comme tMSSqlInput). */
   def query(spark: SparkSession, sql: String): DataFrame
 
-  /** Insertion par lots de `df` dans [schema].[table], colonnes nommees comme celles du DataFrame. */
+  /** Insertion par lots de `df` dans [schema].[table], colonnes alignees par nom sur la table cible. */
   def insert(df: DataFrame, table: String, batchSize: Int): Unit
 }
 
 /**
- * Parametres de connexion d'un environnement (dfin.bsy.reo.mssql.<env>), equivalents des variables de contexte
- * Talend cxnMSSQL_*. Le mot de passe n'est jamais dans la configuration : il est lu au moment de la connexion,
- * dans un magasin de secrets Hadoop (alias) ou dans une variable d'environnement.
+ * Connexion SQL Server d'un environnement, meme modele que MsSqlServerConf du projet PUSHSQLSERVER : serveur, port,
+ * instance et base dans la configuration (dfin.bsy.reo.mssqlserver.<env>), compte et mot de passe dans Vault.
+ * Classe simple (pas une case class) : le mot de passe n'apparait jamais dans toString.
  */
-final case class MssqlSettings(url: String,
-                               driver: String,
-                               schema: String,
-                               user: String,
-                               queryTimeoutSeconds: Int,
-                               insertPartitions: Int,
-                               password: () => String) {
-  override def toString: String = s"MssqlSettings($url, schema=$schema, user=$user)"
+class MsSqlServerConf(val user: String,
+                      val password: String,
+                      val server: String,
+                      val port: Int,
+                      val instanceName: String,
+                      val dbName: String,
+                      val trustServerCertificate: Boolean = false,
+                      val schema: String = "dbo") extends Serializable {
+
+  /** URL JDBC identique a PUSHSQLSERVER (pilote Microsoft, chiffrement exige). */
+  def getJdbcUrl: String =
+    s"jdbc:sqlserver://$server:$port;instanceName=$instanceName;database=$dbName;" +
+      s"integratedSecurity=false;encrypt=true;trustServerCertificate=$trustServerCertificate"
+
+  override def toString: String = s"MsSqlServerConf($getJdbcUrl, schema=$schema, user=$user)"
 }
 
-object MssqlSettings {
+object MsSqlServerConf {
 
-  val DEFAULT_DRIVER = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
-  /** Nom d'application vu par SQL Server (appName=BSY_A2918 dans l'URL jTDS Talend). */
-  val APPLICATION_NAME = "BSY_A2918"
-  /** Valeur des parametres a reporter depuis les contextes Talend dans le fichier deploye (depot Git public). */
-  val PLACEHOLDER = "A_RENSEIGNER"
+  private val logger = LoggerFactory.getLogger(getClass)
+
+  /** Racine du bloc de connexion (dfin.frg.mssqlserver dans PUSHSQLSERVER). */
+  val CONFIG_BASE = s"$CONF_ROOT.mssqlserver"
+  val DRIVER = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
 
   /**
-   * Lit dfin.bsy.reo.mssql.<env> :
-   *   url                      URL JDBC complete (prioritaire, ex. jTDS pour une parite stricte avec Talend)
-   *   server, port, database   sinon : jdbc:sqlserver://server:port;databaseName=...;applicationName=BSY_A2918;<url_params>
-   *   url_params               proprietes du pilote (chiffrement, timeouts)
-   *   driver                   classe du pilote (defaut : pilote Microsoft)
-   *   schema, login            cxnMSSQL_Schema, cxnMSSQL_Login
-   *   password_alias           alias du mot de passe dans le magasin Hadoop (credential_provider_path,
-   *                            ex. jceks://hdfs/prd/app/bsy_a2918/conf/reo_mssql.jceks)
-   *   password_env             sinon, variable d'environnement portant le mot de passe
-   * et dfin.bsy.reo.mssql_query_timeout (secondes, 0 = aucun) et dfin.bsy.reo.mssql_insert_partitions.
+   * Lit dfin.bsy.reo.mssqlserver :
+   *   address, namespace, authPath, secretPath, engineVersion   acces Vault (communs aux environnements)
+   *   userKey, passwordKey                                       cles du secret (defaut user / password)
+   *   <env>.server, port, instanceName, dbName                   connexion (contextes Talend cxnMSSQL_*)
+   *   <env>.trustServerCertificate (defaut false), <env>.schema (defaut dbo)
+   * Identifiants, par ordre de priorite (comme PUSHSQLSERVER) : Vault avec nouvelles tentatives, puis la section
+   * de secours de vault.conf, puis <env>.user / <env>.password en clair (dernier recours, jamais en production).
    */
-  def from(conf: ReoConf, hadoopConf: Configuration, env: String => Option[String] = sys.env.get): MssqlSettings = {
-    val base = s"$CONF_ROOT.mssql.${conf.env}"
-    if (!conf.config.hasPath(base)) {
-      throw new IllegalArgumentException(s"Connexion SQL Server absente de la configuration : $base")
+  def from(conf: ReoConf, vaultManager: VaultManager = VaultManagerProduction): MsSqlServerConf = {
+    val envBase = s"$CONFIG_BASE.${conf.env}"
+    if (!conf.config.hasPath(envBase)) {
+      throw new IllegalArgumentException(s"Connexion SQL Server absente de la configuration : $envBase")
     }
-    def opt(key: String): Option[String] = Option(conf.string(s"$base.$key", null)).map(_.trim).filter(_.nonEmpty)
     def required(key: String): String = {
-      val value = conf.requiredString(s"$base.$key").trim
-      if (value.isEmpty || value == PLACEHOLDER) {
-        throw new IllegalArgumentException(s"Connexion SQL Server : $base.$key a renseigner (contexte Talend cxnMSSQL_*)")
-      }
+      val value = conf.requiredString(key).trim
+      if (value.isEmpty) throw new IllegalArgumentException(s"Connexion SQL Server : $key vide")
       value
     }
-    val url = opt("url").getOrElse {
-      val params = opt("url_params").map(p => if (p.endsWith(";")) p else p + ";").getOrElse("")
-      s"jdbc:sqlserver://${required("server")}:${required("port")};" +
-        s"databaseName=${required("database")};applicationName=$APPLICATION_NAME;$params"
-    }
-    val alias = opt("password_alias")
-    val providerPath = opt("credential_provider_path")
-    val passwordEnv = opt("password_env")
-    MssqlSettings(
-      url = url,
-      driver = opt("driver").getOrElse(DEFAULT_DRIVER),
-      schema = opt("schema").getOrElse("dbo"),
-      user = required("login"),
-      queryTimeoutSeconds = conf.int(s"$CONF_ROOT.mssql_query_timeout", 0),
-      insertPartitions = conf.int(s"$CONF_ROOT.mssql_insert_partitions", 1),
-      password = () => resolvePassword(hadoopConf, alias, providerPath, passwordEnv, env))
+    val server = required(s"$envBase.server")
+    val port = conf.int(s"$envBase.port", 1433)
+    val instanceName = conf.string(s"$envBase.instanceName", "")
+    val dbName = required(s"$envBase.dbName")
+    val trustCert = conf.boolean(s"$envBase.trustServerCertificate", default = false)
+    val schema = conf.string(s"$envBase.schema", "dbo")
+    val (user, password) = resolveCredentials(conf, envBase, vaultManager)
+    new MsSqlServerConf(user, password, server, port, instanceName, dbName, trustCert, schema)
   }
 
-  private[utility] def resolvePassword(hadoopConf: Configuration,
-                                       alias: Option[String],
-                                       providerPath: Option[String],
-                                       passwordEnv: Option[String],
-                                       env: String => Option[String]): String = {
-    val fromStore = alias.flatMap { a =>
-      val c = new Configuration(hadoopConf)
-      providerPath.foreach(c.set(CredentialProviderFactory.CREDENTIAL_PROVIDER_PATH, _))
-      Option(c.getPassword(a)).map(new String(_))
+  private def resolveCredentials(conf: ReoConf, envBase: String, vaultManager: VaultManager): (String, String) =
+    try {
+      val userKey = conf.string(s"$CONFIG_BASE.userKey", "user")
+      val passwordKey = conf.string(s"$CONFIG_BASE.passwordKey", "password")
+      val secrets = vaultManager.retrieveSecrets(
+        conf.requiredString(s"$CONFIG_BASE.address"),
+        conf.requiredString(s"$CONFIG_BASE.namespace"),
+        conf.requiredString(s"$CONFIG_BASE.authPath"),
+        conf.requiredString(s"$CONFIG_BASE.secretPath"),
+        conf.int(s"$CONFIG_BASE.engineVersion", 2))
+      def secret(key: String): String = secrets.getOrElse(key, throw new IllegalStateException(
+        s"Cle '$key' absente du secret Vault (cles presentes : ${secrets.keys.toSeq.sorted.mkString(", ")})"))
+      (secret(userKey), secret(passwordKey))
+    } catch {
+      case vaultError: Exception =>
+        val userPath = s"$envBase.user"
+        val passwordPath = s"$envBase.password"
+        if (conf.config.hasPath(userPath) && conf.config.hasPath(passwordPath)) {
+          logger.warn(s"Vault et secours de vault.conf en echec : identifiants en clair de $envBase utilises " +
+            s"(jamais en production). Erreur Vault : ${vaultError.getMessage}")
+          (conf.config.getString(userPath), conf.config.getString(passwordPath))
+        } else {
+          throw new IllegalStateException(
+            s"Aucun identifiant SQL Server pour ${conf.env} : ${vaultError.getMessage}", vaultError)
+        }
     }
-    fromStore
-      .orElse(passwordEnv.flatMap(env))
-      .getOrElse(throw new IllegalStateException(
-        "Mot de passe SQL Server introuvable : renseigner password_alias (magasin Hadoop credential_provider_path) " +
-          s"ou password_env (alias=${alias.getOrElse("-")}, variable=${passwordEnv.getOrElse("-")})"))
-  }
+}
+
+/** Reglages d'execution SQL Server (dfin.bsy.reo.mssql_*). */
+final case class MssqlRunSettings(queryTimeoutSeconds: Int, insertPartitions: Int, bulkCopyTimeoutSeconds: Int)
+
+object MssqlRunSettings {
+  def from(conf: ReoConf): MssqlRunSettings = MssqlRunSettings(
+    queryTimeoutSeconds = conf.int(s"$CONF_ROOT.mssql_query_timeout", 0),
+    insertPartitions = conf.int(s"$CONF_ROOT.mssql_insert_partitions", 1),
+    bulkCopyTimeoutSeconds = conf.int(s"$CONF_ROOT.mssql_bulk_copy_timeout", 3600))
 }
 
 /**
- * Implementation JDBC. `connect` est injectable pour les tests ; par defaut, une connexion DriverManager en
- * autocommit (AUTO_COMMIT = true dans les jobs Talend).
+ * Implementation JDBC. Procedures et lecture des colonnes cibles cote driver ; insertion par SQLServerBulkCopy cote
+ * executeurs, comme PUSHSQLSERVER (DbUtils.bulkDFtoSqlServer). `connect` est injectable pour les tests.
  */
-class JdbcMssqlGateway(settings: MssqlSettings, connect: Option[() => Connection] = None) extends MssqlGateway {
+class JdbcMssqlGateway(sqlConf: MsSqlServerConf,
+                       settings: MssqlRunSettings,
+                       connect: Option[() => Connection] = None) extends MssqlGateway {
 
   private val log = LoggerFactory.getLogger(this.getClass)
+  private val Identifier = "^[a-zA-Z_][a-zA-Z0-9_]*$"
 
-  private def properties: Properties = {
-    val p = new Properties()
-    p.setProperty("user", settings.user)
-    p.setProperty("password", settings.password())
-    p.setProperty("driver", settings.driver)
-    p
-  }
+  require(sqlConf.schema.matches(Identifier), s"Schema SQL Server invalide : ${sqlConf.schema}")
 
   private def openConnection(): Connection = connect.map(_.apply()).getOrElse {
-    Class.forName(settings.driver)
-    val c = DriverManager.getConnection(settings.url, properties)
+    Class.forName(MsSqlServerConf.DRIVER)
+    DriverManager.setLoginTimeout(30)
+    val c = DriverManager.getConnection(sqlConf.getJdbcUrl, sqlConf.user, sqlConf.password)
     c.setAutoCommit(true)
     c
   }
 
-  override def qualify(table: String): String = s"[${settings.schema}].[$table]"
+  override def qualify(table: String): String = s"[${sqlConf.schema}].[$table]"
 
   override def callProcedure(procedure: String): ProcResult = {
-    val call = s"{? = call [${settings.schema}].$procedure(?)}"
-    log.info(s"Appel SQL Server $call (${settings.url})")
+    require(procedure.matches(Identifier), s"Nom de procedure invalide : $procedure")
+    val call = s"{? = call [${sqlConf.schema}].$procedure(?)}"
+    log.info(s"Appel SQL Server $call (${sqlConf.getJdbcUrl})")
     val connection = openConnection()
     try {
       val st: CallableStatement =
@@ -163,8 +173,7 @@ class JdbcMssqlGateway(settings: MssqlSettings, connect: Option[() => Connection
         }
         val code = st.getInt(1)
         val returnCode = if (st.wasNull()) None else Some(code)
-        val message = Option(st.getString(2))
-        val result = ProcResult(returnCode, message)
+        val result = ProcResult(returnCode, Option(st.getString(2)))
         log.info(s"$procedure : $result")
         result
       } finally st.close()
@@ -175,37 +184,110 @@ class JdbcMssqlGateway(settings: MssqlSettings, connect: Option[() => Connection
   }
 
   override def query(spark: SparkSession, sql: String): DataFrame = {
-    log.info(s"Lecture SQL Server (${settings.url}) : $sql")
+    log.info(s"Lecture SQL Server (${sqlConf.getJdbcUrl}) : $sql")
     spark.read
       .format("jdbc")
-      .option("url", settings.url)
-      .option("driver", settings.driver)
+      .option("url", sqlConf.getJdbcUrl)
+      .option("driver", MsSqlServerConf.DRIVER)
       .option("query", sql)
-      .option("user", settings.user)
-      .option("password", settings.password())
+      .option("user", sqlConf.user)
+      .option("password", sqlConf.password)
       .option("queryTimeout", settings.queryTimeoutSeconds.toString)
       .load()
   }
 
+  /**
+   * Colonnes de la table cible (INFORMATION_SCHEMA), par nom en minuscules :
+   * (nom reel, type, CHARACTER_MAXIMUM_LENGTH ; 0 hors colonnes caractere, -1 pour (max)).
+   */
+  private[utility] def targetColumns(connection: Connection, table: String): Map[String, (String, String, Int)] = {
+    val st = connection.prepareStatement(
+      """SELECT COLUMN_NAME, DATA_TYPE, ISNULL(CHARACTER_MAXIMUM_LENGTH, 0) AS CHAR_MAX_LEN
+        |FROM INFORMATION_SCHEMA.COLUMNS
+        |WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+        |ORDER BY ORDINAL_POSITION""".stripMargin)
+    try {
+      st.setString(1, sqlConf.schema)
+      st.setString(2, table)
+      val rs = st.executeQuery()
+      try {
+        val out = scala.collection.mutable.LinkedHashMap.empty[String, (String, String, Int)]
+        while (rs.next()) {
+          val name = rs.getString("COLUMN_NAME")
+          out += name.toLowerCase -> ((name, rs.getString("DATA_TYPE").toLowerCase, rs.getInt("CHAR_MAX_LEN")))
+        }
+        out.toMap
+      } finally rs.close()
+    } finally st.close()
+  }
+
+  /**
+   * SQLServerBulkCopy en flux continu, une connexion par partition (PUSHSQLSERVER) : colonnes alignees sur la table
+   * cible sans tenir compte de la casse (une colonne absente de la cible fait echouer l'insertion), lots valides au
+   * fil de l'eau (autocommit, comme Talend), verrou de table, identites conservees.
+   */
   override def insert(df: DataFrame, table: String, batchSize: Int): Unit = {
+    require(table.matches(Identifier), s"Nom de table invalide : $table")
+    require(batchSize > 0, s"Taille de lot invalide : $batchSize")
     val target = qualify(table)
-    log.info(s"Insertion SQL Server $target (lots de $batchSize, ${settings.insertPartitions} connexion(s))")
-    df.coalesce(settings.insertPartitions)
-      .write
-      .mode(SaveMode.Append)
-      .format("jdbc")
-      .option("url", settings.url)
-      .option("driver", settings.driver)
-      .option("dbtable", target)
-      .option("user", settings.user)
-      .option("password", settings.password())
-      .option("batchsize", batchSize.toString)
-      .option("queryTimeout", settings.queryTimeoutSeconds.toString)
-      .save()
+
+    val columns = {
+      val connection = openConnection()
+      try targetColumns(connection, table)
+      finally connection.close()
+    }
+    if (columns.isEmpty) throw new IllegalStateException(s"Table SQL Server $target introuvable ou sans colonne")
+    val missing = df.schema.fieldNames.filterNot(f => columns.contains(f.toLowerCase))
+    if (missing.nonEmpty) {
+      throw new IllegalStateException(s"Colonnes absentes de $target : ${missing.mkString(", ")}")
+    }
+    val mappings = df.schema.fieldNames.toSeq.map(f => f -> columns(f.toLowerCase)._1)
+    val targetIsNumeric = df.schema.fieldNames.map(f => JdbcMssqlGateway.NumericTypes.contains(columns(f.toLowerCase)._2))
+    val maxLengths = df.schema.fieldNames.map(f => columns(f.toLowerCase)._3)
+
+    // Valeurs simples seulement dans la fermeture : rien de non serialisable n'est envoye aux executeurs.
+    val url = sqlConf.getJdbcUrl
+    val user = sqlConf.user
+    val password = sqlConf.password
+    val schema = df.schema
+    val timeout = settings.bulkCopyTimeoutSeconds
+    log.info(s"Insertion SQL Server $target par SQLServerBulkCopy (lots de $batchSize, " +
+      s"${settings.insertPartitions} connexion(s))")
+
+    df.coalesce(settings.insertPartitions).rdd.foreachPartition { rows: Iterator[Row] =>
+      if (rows.hasNext) {
+        Class.forName(MsSqlServerConf.DRIVER)
+        DriverManager.setLoginTimeout(30)
+        val connection = DriverManager.getConnection(url, user, password)
+        val bulkCopy = new SQLServerBulkCopy(connection)
+        try {
+          connection.setAutoCommit(true)
+          val options = new SQLServerBulkCopyOptions()
+          options.setBatchSize(batchSize)
+          options.setTableLock(true)
+          options.setBulkCopyTimeout(timeout)
+          options.setKeepIdentity(true)
+          options.setCheckConstraints(false)
+          options.setUseInternalTransaction(false)
+          bulkCopy.setDestinationTableName(target)
+          bulkCopy.setBulkCopyOptions(options)
+          mappings.foreach { case (source, destination) => bulkCopy.addColumnMapping(source, destination) }
+          bulkCopy.writeToServer(new SparkIteratorBulkData(rows, schema, targetIsNumeric, maxLengths))
+        } finally {
+          try bulkCopy.close() catch { case _: Exception => () }
+          try connection.close() catch { case _: Exception => () }
+        }
+      }
+    }
   }
 }
 
 object JdbcMssqlGateway {
-  def fromConf(conf: ReoConf, hadoopConf: Configuration): MssqlGateway =
-    new JdbcMssqlGateway(MssqlSettings.from(conf, hadoopConf))
+  /** Types SQL Server numeriques : une chaine vide ou non numerique y est envoyee null. */
+  val NumericTypes: Set[String] = Set("int", "bigint", "smallint", "tinyint", "decimal", "numeric", "money",
+    "smallmoney", "float", "real")
+
+  /** Connexion de l'environnement, identifiants lus dans Vault au moment de la creation. */
+  def fromConf(conf: ReoConf, vaultManager: VaultManager = VaultManagerProduction): MssqlGateway =
+    new JdbcMssqlGateway(MsSqlServerConf.from(conf, vaultManager), MssqlRunSettings.from(conf))
 }

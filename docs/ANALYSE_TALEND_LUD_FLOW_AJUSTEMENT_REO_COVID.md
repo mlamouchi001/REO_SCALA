@@ -4,7 +4,7 @@ Source analysée : export `project_existant/LUD_FLOW_AJUSTEMENT_REO_COVID` (Tale
 L'export contient le `.item` de l'orchestrateur, ses contextes, et 20 jars : l'orchestrateur et ses 19 jobs enfants. Les jobs enfants n'y figurent que sous forme compilée.
 Méthode : lecture du `.item` et des contextes, puis décompilation des 20 jars (CFR) pour la logique exacte de chaque composant. Les contextes des jobs Spark, absents de l'export, ont été lus dans leurs jars.
 
-Aucun mot de passe n'est recopié dans ce document. Les adresses et comptes SQL Server, présents dans les contextes Talend, ne le sont pas non plus : le dépôt Git est public.
+Aucun mot de passe ni compte SQL Server n'est recopié dans ce document. Les comptes sont désormais lus dans Vault (voir le document de conception).
 
 ## 1. Contenu de l'export
 

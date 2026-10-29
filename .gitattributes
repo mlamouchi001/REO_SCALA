@@ -1,0 +1,16 @@
+# Fins de ligne LF forcees (repris de PUSHSQLSERVER) : un CRLF dans un script ou une conf ajoute un \r
+# invisible, par exemple dans le nom de classe passe a spark3-submit -> ClassNotFoundException sur YARN.
+* text=auto eol=lf
+*.sh     text eol=lf
+*.conf   text eol=lf
+*.template text eol=lf
+*.scala  text eol=lf
+*.xml    text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.md     text eol=lf
+*.sql    text eol=lf
+
+*.jar    binary
+*.zip    binary
+*.pptx   binary

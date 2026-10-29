@@ -25,7 +25,7 @@ Ce document décrit la cible des trois chaînes Talend migrées dans le projet `
 | Constantes | `utility.ReoConstants` | `utility.AjustReoConstants` | `utility.MyReoConstants` | `utility.CovidReoConstants` |
 | Schémas | `utility.CustomSchemaReo` (référentiel des types) | `utility.CustomSchemaAjustReo` | `utility.CustomSchemaMyReo` | `utility.CustomSchemaCovidReo` (hérite des deux autres) |
 | Règles Java | | | `utility.MyReoRules` | `utility.CovidRules` |
-| SQL Server | | | | `utility.MssqlGateway`, `JdbcMssqlGateway`, `MssqlSettings` |
+| SQL Server | | | | `utility.MssqlGateway`, `JdbcMssqlGateway`, `MsSqlServerConf`, `VaultManager`, `SparkIteratorBulkData` (modèle PUSHSQLSERVER) |
 | Socle | `ReoConf`, `DataWriter`, `DataQuality`, `DataTypePlan`, `StepRunner`, `SparkSessionManager` | | | |
 | Configuration | un fichier par driver, même structure, lue par `ReoConf` | `conf/reo_ajust.conf` | `conf/reo_myreo.conf` | `conf/reo_alim.conf` |
 | Lancement | `bin/run_reo.sh <chaine> <env> <conf>` | `ajust` | `myreo` | `covid` |
@@ -185,7 +185,7 @@ SQL Server : `MssqlGateway` porte les trois opérations des jobs Talend (procéd
 | `job.MainDriverReo` | Chaîne COVID : 17 étapes, accès SQL Server injectable | `MainDriver` |
 | `mapping.VentilLayout`, `mapping.MainMapperCovidVentilation` | Ventilation commune aux deux jobs de calcul, paramétrée par la disposition des colonnes | nouveau |
 | `utility.CovidRules` | `BigDecimal.multiply(x, DECIMAL64 / DECIMAL32)`, `Integer.parseInt`, `parseTo_Double` en UDF | nouveau |
-| `utility.MssqlGateway`, `JdbcMssqlGateway`, `MssqlSettings` | Procédures, lecture et insertion SQL Server ; paramètres par environnement, mot de passe lu dans un magasin Hadoop | remplace tMSSqlConnection, tMSSqlSP, tMSSqlInput, tMSSqlOutput |
+| `utility.MssqlGateway`, `JdbcMssqlGateway`, `MsSqlServerConf`, `VaultManager`, `SparkIteratorBulkData` | Procédures, lecture et insertion SQL Server (SQLServerBulkCopy) ; connexion par environnement, compte et mot de passe lus dans Vault, comme PUSHSQLSERVER | remplace tMSSqlConnection, tMSSqlSP, tMSSqlInput, tMSSqlOutput |
 
 ## 7. Correspondance composants Talend -> Spark SQL
 
@@ -322,7 +322,7 @@ Les trois fichiers ont la même structure, lue par la même classe `ReoConf` :
 
 Les racines et les tables communes figurent dans plusieurs fichiers : un changement doit être reporté partout. Le test `ConfFilesSpec` le vérifie (racines, référentiel des types, tables LK et DIM, liens entre chaînes : fichier SV MyREO commun, dépôt AJUST écrit par COVID), et contrôle que chaque fichier résout tous les chemins de son driver dans les quatre environnements, sans table d'une autre chaîne.
 
-SQL Server (COVID) : `dfin.bsy.reo.mssql.<env>` porte le serveur, le port, la base, le schéma, le compte et les propriétés du pilote. Le dépôt Git étant public, le serveur et le compte valent `A_RENSEIGNER` : ils sont à reporter depuis les contextes Talend `cxnMSSQL_*` dans le fichier déposé sur HDFS, et le driver refuse de se connecter tant qu'ils ne le sont pas. Le mot de passe n'est jamais dans la configuration : il est lu au moment de la connexion dans un magasin Hadoop jceks (`password_alias`, `credential_provider_path`), ou à défaut dans une variable d'environnement du driver (`password_env`). `mssql_on_proc_error` (`WARN` par défaut, comme Talend, ou `FAIL`) décide du sort d'un code retour non nul de procédure ; `mssql_query_timeout` borne les requêtes et les procédures.
+SQL Server (COVID), même modèle que le projet PUSHSQLSERVER : `dfin.bsy.reo.mssqlserver` porte l'accès Vault commun aux environnements (`address`, `namespace`, `authPath`, `secretPath`, `engineVersion`, `userKey`, `passwordKey`), puis par environnement `server`, `port`, `instanceName`, `dbName`, `schema` et `trustServerCertificate` (valeurs des contextes Talend `cxnMSSQL_*`). L'URL est celle de PUSHSQLSERVER (`jdbc:sqlserver://…;instanceName=…;database=…;integratedSecurity=false;encrypt=true;trustServerCertificate=…`). Le compte et le mot de passe sont lus dans Vault par AppRole (bibliothèque vault-java-driver) : `roleId` et `secretId` sont dans le fichier `vault.conf` désigné par la variable `vault_config_file`, que `bin/run_reo.sh` envoie au driver YARN. Résolution, comme PUSHSQLSERVER : Vault avec `vault.retryMaxAttempts` tentatives, puis la section de secours de `vault.conf` si `vault.fallback.enabled`, puis `<env>.user` / `<env>.password` en clair (dernier recours, jamais en production). `mssql_on_proc_error` (`WARN` par défaut, comme Talend, ou `FAIL`) décide du sort d'un code retour non nul de procédure ; `mssql_query_timeout` borne les requêtes et les procédures.
 
 Les Jenkinsfiles déploient les trois fichiers : un appel Ansible Tower par fichier, car le modèle repris du template ne prend qu'un `application_conf` par appel.
 
@@ -374,9 +374,9 @@ Chaîne COVID :
 | Sorties de mise au point `ods/temp/sortie1.csv` et `sortie2.csv` non produites | Aucun consommateur |
 | Contrôles avant écriture : montant REOMAKER invalide, colonne nulle de `ajustment_reo`, date illisible, valeur non numérique du fait UV | Talend ouvrait ses sorties (ou vidait ses tables) avant de lire, et plusieurs jobs avalaient l'erreur (code 0) |
 | Fait UV exporté vers `dc_conso_delta` contrôlé avant l'appel de la procédure de vidage | Une valeur invalide ne laisse plus la table vide |
-| Toute erreur SQL Server arrête la chaîne ; insertion transactionnelle par partition | Talend ignorait les lots en échec et continuait ; plus de chargement partiel silencieux |
+| Toute erreur SQL Server arrête la chaîne ; insertion par SQLServerBulkCopy, lots validés au fil de l'eau (autocommit) comme Talend et PUSHSQLSERVER | Talend ignorait les lots en échec et continuait. Un lot déjà validé reste en base : la relance repart du vidage par procédure |
 | Requête d'extraction à colonnes nommées | Talend lisait `select *` par position |
-| Pilote Microsoft `mssql-jdbc` au lieu de jTDS | Dialecte Spark SQL Server ; jTDS reste possible par `url` et `driver` |
+| Pilote Microsoft `mssql-jdbc` au lieu de jTDS, identifiants dans Vault | Même modèle que PUSHSQLSERVER ; plus aucun mot de passe dans un contexte ni dans les logs (`tContextDump`) |
 | Code retour non nul d'une procédure : alerte par défaut, arrêt avec `mssql_on_proc_error = FAIL` | Contrat des procédures `p_api_*` inconnu ; Talend ne le testait pas |
 
 ## 11. Plan de recette
@@ -404,12 +404,12 @@ Chaîne COVID :
 
 ## 12. Tests
 
-`mvn test` lance 199 tests. `ConfFilesSpec` et `CovidConfFileSpec` contrôlent les trois fichiers de configuration. Douze scénarios de bout en bout tournent sur système de fichiers local, chacun avec le fichier de configuration de son driver :
+`mvn test` lance 204 tests. `ConfFilesSpec` et `CovidConfFileSpec` contrôlent les trois fichiers de configuration. Douze scénarios de bout en bout tournent sur système de fichiers local, chacun avec le fichier de configuration de son driver :
 
 - **AJUST** : chaîne complète, reprise du seul fait UV, chaîne partielle qui conserve le dépôt ;
 - **MYREO** : premier run avec historique existant, run sans nouveau fichier, SV désactivé puis réactivé, reprise sans listing, historique absent en `FAIL` puis en `EMPTY` ;
 - **COVID** (base SQL Server simulée, qui trace les appels et garde les lignes insérées) : chaîne complète des 17 étapes, fichier de pilotage sans ligne active et procédure en échec (`WARN` puis `FAIL`), reprise sans SQL Server ni table NRG -> PCI (aucune connexion ouverte), sortie dans une racine protégée.
 
-Les règles de chaque job COVID sont testées par mapper (`MainMapperCovid*Spec`), dont les deux ventilations sur un même jeu de paramètres ; l'appel de procédure JDBC et la lecture du mot de passe dans un magasin jceks le sont dans `MssqlGatewaySpec`.
+Les règles de chaque job COVID sont testées par mapper (`MainMapperCovid*Spec`), dont les deux ventilations sur un même jeu de paramètres ; l'appel de procédure JDBC, la résolution des identifiants (Vault, secours de `vault.conf`, valeurs en clair) et l'alignement des colonnes de l'insertion le sont dans `MssqlGatewaySpec` et `SparkIteratorBulkDataSpec`.
 
 La couverture est mesurée par `mvn scoverage:report` : 92,2 % des instructions et 78,6 % des branches, drivers compris. Sonar exclut les drivers de la couverture, via la propriété `sonar.coverage.exclusions` du pom. L'implémentation JDBC de la lecture et de l'insertion n'est pas couverte : elle demande une base SQL Server.
