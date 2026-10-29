@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo
 
 import com.bsy.datalake.reo.utility.ReoConstants.{CONF_ROOT, REF_DATA_TYPE_SV}
-import com.bsy.datalake.reo.utility.{AjustReoConstants => A, CovidReoConstants => C, DataWriter, FakeVaultManager}
+import com.bsy.datalake.reo.utility.{AjustReoConstants => A, AlimReoConstants => C, DataWriter, FakeVaultManager}
 import com.bsy.datalake.reo.utility.MsSqlServerConf
 import com.bsy.datalake.reo.utility.{MyReoConstants => M, ReoConf}
 import com.typesafe.config.{Config, ConfigFactory}
@@ -43,13 +43,13 @@ class ConfFilesSpec extends AnyFlatSpec with Matchers {
     outputs = Seq(M.MYREO_NEW_FILES, M.MYREO_REF_FILES, M.MYREO_SV),
     steps = Seq(M.STEP_LIST_FILES, M.STEP_RD_TO_SV, M.STEP_REF_UPDATE))
 
-  private val covid = Chain(
+  private val alim = Chain(
     "conf/reo_alim.conf",
-    inputs = Seq(C.COVID_RUBRIQUE, A.LK_PCI, C.MP_NRG_PCI_EQUAL, C.MP_NRG_PCI_DIFF, C.MP_NRG_PCI_ODS_ALL,
+    inputs = Seq(C.ALIM_RUBRIQUE, A.LK_PCI, C.MP_NRG_PCI_EQUAL, C.MP_NRG_PCI_DIFF, C.MP_NRG_PCI_ODS_ALL,
       C.REOMAKER_ACTIVE, C.REOMAKER_IN, REF_DATA_TYPE_SV, C.REOMAKER_SV, A.YEAR_MAPPING, C.PARAM_M_MTD, C.PARAM_M_QTD,
       C.PARAM_M_FQ, C.PARAM_M_FY, C.ETP_MTD_GD1_GD2, C.ETP_GD2_MTD_QTD, C.ETP_GD2_MTD_YTD, C.ETP_GD2_QTD_FQ,
       C.ETP_GD2_YTD_FY, C.MYREO_AJU_AGG, C.MYREO_CONSO_WP, C.MYREO_CONSO_SKIPPER, A.LK_GTS_TYPE_CA, A.LK_GTS_SKIPPER,
-      A.LK_CA_SNRG) ++ sharedDims ++ Seq(C.COVID_DIM_SUPERVISION, C.COVID_DIM_CONVERSION, C.MYREO_DC_CONSO_UV,
+      A.LK_CA_SNRG) ++ sharedDims ++ Seq(C.ALIM_DIM_SUPERVISION, C.ALIM_DIM_CONVERSION, C.MYREO_DC_CONSO_UV,
       C.AJUST_AJU_SQL, C.AJUST_AJU_AGG),
     outputs = Seq(C.MP_NRG_PCI_EQUAL, C.MP_NRG_PCI_DIFF, C.MP_NRG_PCI_ODS_DIFF, C.MP_NRG_PCI_ODS_DIFF9, C.REOMAKER_SV,
       C.MYREO_VENTIL, C.MYREO_AJU_AGG, C.MYREO_CONSO_WP, C.MYREO_CONSO_ARCH, C.MYREO_CONSO_SKIPPER,
@@ -64,7 +64,7 @@ class ConfFilesSpec extends AnyFlatSpec with Matchers {
     A.DIM_ACTIVITE, A.DIM_PYRAMIDE_BUDG, A.DIM_CUMUL, A.DIM_DATA_TYPE, A.DIM_DATA_SOURCE, A.DIM_GTS_SKIPPER,
     A.DIM_GTS_TYPE_CA, A.DIM_CLASSIFICATION)
 
-  Seq(ajust, myreo, covid).foreach { chain =>
+  Seq(ajust, myreo, alim).foreach { chain =>
     chain.file should "ne declarer que les tables de son driver" in {
       (chain.config.getObject("dfin.bsy").keySet().asScala.toSet - "reo") shouldBe (chain.inputs ++ chain.outputs).toSet
     }
@@ -113,17 +113,17 @@ class ConfFilesSpec extends AnyFlatSpec with Matchers {
   }
 }
 
-class CovidConfFileSpec extends AnyFlatSpec with Matchers {
+class AlimConfFileSpec extends AnyFlatSpec with Matchers {
 
   private val envPrefixes = Seq("dev" -> "dev", "int" -> "int", "hom" -> "fhml", "prd" -> "prd")
   private def load(file: String): Config = ConfigFactory.parseFile(new File(file)).resolve()
-  private lazy val covid = load("conf/reo_alim.conf")
+  private lazy val alim = load("conf/reo_alim.conf")
   private lazy val ajust = load("conf/reo_ajust.conf")
   private lazy val myreo = load("conf/reo_myreo.conf")
 
-  "conf/reo_alim.conf" should "reprendre les chemins des contextes Talend COVID de chaque environnement" in {
+  "conf/reo_alim.conf" should "reprendre les chemins des contextes Talend ALIM de chaque environnement" in {
     envPrefixes.foreach { case (env, p) =>
-      val conf = new ReoConf(covid, env)
+      val conf = new ReoConf(alim, env)
       val erk = if (env == "dev") "a2832_erk" else "erk_a2832"
       conf.outputPath(C.MP_NRG_PCI_EQUAL) shouldBe s"/$p/srv/bsy_a2918/srv_bsy_a2918_basycout/sv_reo/$erk/ajust/mp_nrg_pci/equal"
       conf.inputPath(C.REOMAKER_ACTIVE) shouldBe s"/$p/app/bsy_a2918/wp_reo/params/reomaker/reomaker_active.csv"
@@ -138,7 +138,7 @@ class CovidConfFileSpec extends AnyFlatSpec with Matchers {
 
   it should "ecrire le fichier SV de la chaine MYREO et le depot lu par la chaine AJUST" in {
     envPrefixes.foreach { case (env, _) =>
-      val c = new ReoConf(covid, env)
+      val c = new ReoConf(alim, env)
       c.outputPath(C.REOMAKER_SV) shouldBe new ReoConf(myreo, env).outputPath(M.MYREO_SV)
       val a = new ReoConf(ajust, env)
       c.outputPath(C.AJUST_DEPOT_SQL) shouldBe a.inputPath(A.AJUST_ARCHIVE_SQL) + "/sql_reo.csv"
@@ -150,14 +150,14 @@ class CovidConfFileSpec extends AnyFlatSpec with Matchers {
     envPrefixes.foreach { case (env, _) =>
       Seq("sv_reo", "erk_sv", "bv_reo", "bv", "wp_reo", "wp", "uv_reo", "ere_uv", "erk_uv", "gzh_uv", "usg_uv").foreach { root =>
         val key = s"$CONF_ROOT.roots.$env.$root"
-        covid.getString(key) shouldBe ajust.getString(key)
+        alim.getString(key) shouldBe ajust.getString(key)
       }
     }
     (Seq(REF_DATA_TYPE_SV, A.YEAR_MAPPING, A.LK_PCI, A.LK_GTS_TYPE_CA, A.LK_GTS_SKIPPER, A.LK_CA_SNRG) ++
       Seq(A.DIM_SUPER_PHASE, A.DIM_PHASE, A.DIM_PCI, A.DIM_PERIODE, A.DIM_ACTIVITE, A.DIM_PYRAMIDE_BUDG, A.DIM_CUMUL,
         A.DIM_DATA_TYPE, A.DIM_DATA_SOURCE, A.DIM_GTS_SKIPPER, A.DIM_GTS_TYPE_CA, A.DIM_CLASSIFICATION)).foreach { t =>
       withClue(t) {
-        covid.getConfig(s"dfin.bsy.$t").root().unwrapped() shouldBe ajust.getConfig(s"dfin.bsy.$t").root().unwrapped()
+        alim.getConfig(s"dfin.bsy.$t").root().unwrapped() shouldBe ajust.getConfig(s"dfin.bsy.$t").root().unwrapped()
       }
     }
   }
@@ -167,16 +167,16 @@ class CovidConfFileSpec extends AnyFlatSpec with Matchers {
       "hom" -> ("192.199.96.83", "MSPARTBSYH101"), "prd" -> ("192.197.102.226", "MSPARTBSYP101"))
     envPrefixes.foreach { case (env, _) =>
       val vault = new FakeVaultManager(Map("user2" -> "APP", "password2" -> "pwd", "user" -> "autre"))
-      val c = MsSqlServerConf.from(new ReoConf(covid, env), vault)
+      val c = MsSqlServerConf.from(new ReoConf(alim, env), vault)
       val (server, instance) = servers(env)
       c.getJdbcUrl shouldBe s"jdbc:sqlserver://$server:14001;instanceName=$instance;database=BSY_REO;" +
         "integratedSecurity=false;encrypt=true;trustServerCertificate=true"
       vault.calls shouldBe Seq(("https://vault.cloud.socgen", "myVault/BSY_A2918_PRD_FRG_A2918_PRD", "approle",
         "kv/mssql", 2))
       (c.user, c.password) shouldBe (("APP", "pwd"))
-      covid.hasPath(s"$CONF_ROOT.mssqlserver.$env.user") shouldBe false
-      covid.hasPath(s"$CONF_ROOT.mssqlserver.$env.password") shouldBe false
+      alim.hasPath(s"$CONF_ROOT.mssqlserver.$env.user") shouldBe false
+      alim.hasPath(s"$CONF_ROOT.mssqlserver.$env.password") shouldBe false
     }
-    covid.getString(s"$CONF_ROOT.mssql_on_proc_error") shouldBe "WARN"
+    alim.getString(s"$CONF_ROOT.mssql_on_proc_error") shouldBe "WARN"
   }
 }

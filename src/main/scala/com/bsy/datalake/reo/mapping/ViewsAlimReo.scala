@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
-import com.bsy.datalake.reo.utility.CovidReoConstants.{AJUST_FY_MIN_PERIOD, REOMAKER_ACTIVE_FLAG, REOMAKER_DATA_SOURCE}
-import com.bsy.datalake.reo.utility.CovidRules.{UDF_IS_DOUBLE, UDF_MUL32, UDF_MUL64, UDF_PARSE_DOUBLE, UDF_PARSE_INT}
+import com.bsy.datalake.reo.utility.AlimReoConstants.{AJUST_FY_MIN_PERIOD, REOMAKER_ACTIVE_FLAG, REOMAKER_DATA_SOURCE}
+import com.bsy.datalake.reo.utility.AlimRules.{UDF_IS_DOUBLE, UDF_MUL32, UDF_MUL64, UDF_PARSE_DOUBLE, UDF_PARSE_INT}
 import com.bsy.datalake.reo.utility.Utils.LINE_NO_COLUMN
 
 /**
@@ -37,7 +37,7 @@ object VentilLayout {
 
   /** LUD_AJUST_REO_CALCULATION_SPARK (ajustements MyREO, AJUREOStruct, 9 axes). */
   val MYREO: VentilLayout = VentilLayout(
-    prefix = "covid_myreo",
+    prefix = "alim_myreo",
     columns = Seq("Phase", "Period", "Type_Cumul", "Conversion", "Data_Type", "Data_Source", "Entite",
       "Centre_Activite", "Indicateurs", "Montant_ajustement"),
     period = "Period",
@@ -50,7 +50,7 @@ object VentilLayout {
 
   /** LUD_REO_AJUST_CALCULATION_SPARK (ajustements SQL Server, YTD_INStruct, 18 colonnes de regroupement). */
   val AJUST: VentilLayout = VentilLayout(
-    prefix = "covid_ajust",
+    prefix = "alim_ajust",
     columns = Seq("ajustment_id", "perimeter", "phase", "periode", "cumul", "data_type", "data_source", "entity",
       "indicator", "ssbu", "nrg", "snrg", "pci", "activity_center", "conversion", "amount", "comment", "input_user",
       "input_date"),
@@ -64,35 +64,35 @@ object VentilLayout {
 }
 
 /**
- * Requetes Spark SQL de la chaine COVID (equivalent de ViewsAjustReo et ViewsMyReo), une par composant Talend de
- * transformation, cite en commentaire. Vues temporaires prefixees par job (covid_nrg_, covid_rmk_, covid_myreo_,
- * covid_ajust_, covid_cbv_, covid_gts_, covid_uv_, covid_mssql_, covid_exp_, covid_dep_).
+ * Requetes Spark SQL de la chaine ALIM (equivalent de ViewsAjustReo et ViewsMyReo), une par composant Talend de
+ * transformation, cite en commentaire. Vues temporaires prefixees par job (alim_nrg_, alim_rmk_, alim_myreo_,
+ * alim_ajust_, alim_cbv_, alim_gts_, alim_uv_, alim_mssql_, alim_exp_, alim_dep_).
  *
  * Conventions de portage, en plus de celles de ViewsAjustReo :
  *  - SG_StringUtils.equals(a, b) est null-safe (null egal a null) : a <=> b ;
  *  - jobs Spark Talend : un champ CSV vide est lu null ; jobs Standard (tHDFSInput) : il vaut "". Les requetes des
  *    jobs Standard rendent "" aux chaines (COALESCE) pour que les cles vides se correspondent comme chez Talend ;
- *  - BigDecimal.multiply(x, MathContext) -> UDF covid_mul64 / covid_mul32 (arrondi par ligne, comme Talend) ;
+ *  - BigDecimal.multiply(x, MathContext) -> UDF alim_mul64 / alim_mul32 (arrondi par ligne, comme Talend) ;
  *  - chaque sortie intermediaire d'une ventilation est ramenee a DECIMAL(32,16), l'echelle des fichiers relus.
  */
-object ViewsCovidReo {
+object ViewsAlimReo {
 
   // ================================================================================================
   // Vues temporaires
   // ================================================================================================
-  val V_NRG_RUBRIQUE = "covid_nrg_rubrique"
-  val V_NRG_PCI = "covid_nrg_pci"
-  val V_NRG_OUT1 = "covid_nrg_out1"
-  val V_NRG_TO_DIFF = "covid_nrg_to_diff"
-  val V_NRG_DIFF = "covid_nrg_diff"
-  val V_NRG_ALL = "covid_nrg_all"
-  val V_NRG_EQUAL = "covid_nrg_equal"
-  val V_NRG_ITERATION = "covid_nrg_iteration"
+  val V_NRG_RUBRIQUE = "alim_nrg_rubrique"
+  val V_NRG_PCI = "alim_nrg_pci"
+  val V_NRG_OUT1 = "alim_nrg_out1"
+  val V_NRG_TO_DIFF = "alim_nrg_to_diff"
+  val V_NRG_DIFF = "alim_nrg_diff"
+  val V_NRG_ALL = "alim_nrg_all"
+  val V_NRG_EQUAL = "alim_nrg_equal"
+  val V_NRG_ITERATION = "alim_nrg_iteration"
 
-  val V_RMK_ACTIVE = "covid_rmk_active"
-  val V_RMK_INPUT = "covid_rmk_input"
-  val V_RMK_REF_DATA_TYPE = "covid_rmk_ref_data_type"
-  val V_RMK_ACTIVE_TYPES = "covid_rmk_active_types"
+  val V_RMK_ACTIVE = "alim_rmk_active"
+  val V_RMK_INPUT = "alim_rmk_input"
+  val V_RMK_REF_DATA_TYPE = "alim_rmk_ref_data_type"
+  val V_RMK_ACTIVE_TYPES = "alim_rmk_active_types"
 
   val V_VENTIL_INPUT = "input"
   val V_VENTIL_MP_EQUAL = "mp_equal"
@@ -102,37 +102,37 @@ object ViewsCovidReo {
   val V_VENTIL_M_FY = "m_fy"
   val V_VENTIL_YEAR = "year_code"
 
-  val V_CBV_AJU_AGG = "covid_cbv_aju_agg"
-  val V_CBV_MP = "covid_cbv_mp"
-  val V_CBV_MP_PCI = "covid_cbv_mp_pci"
-  val V_CBV_YEAR_MAPPING = "covid_cbv_year_mapping"
-  val V_CBV_TO_AGG = "covid_cbv_to_agg"
+  val V_CBV_AJU_AGG = "alim_cbv_aju_agg"
+  val V_CBV_MP = "alim_cbv_mp"
+  val V_CBV_MP_PCI = "alim_cbv_mp_pci"
+  val V_CBV_YEAR_MAPPING = "alim_cbv_year_mapping"
+  val V_CBV_TO_AGG = "alim_cbv_to_agg"
 
-  val V_GTS_CONSO = "covid_gts_conso"
-  val V_GTS_LK_PCI = "covid_gts_lk_pci"
-  val V_GTS_LK_TYPE_CA = "covid_gts_lk_type_ca"
-  val V_GTS_LK_SKIPPER = "covid_gts_lk_skipper"
-  val V_GTS_LK_CA_SNRG = "covid_gts_lk_ca_snrg"
+  val V_GTS_CONSO = "alim_gts_conso"
+  val V_GTS_LK_PCI = "alim_gts_lk_pci"
+  val V_GTS_LK_TYPE_CA = "alim_gts_lk_type_ca"
+  val V_GTS_LK_SKIPPER = "alim_gts_lk_skipper"
+  val V_GTS_LK_CA_SNRG = "alim_gts_lk_ca_snrg"
 
   /** Prefixe des vues du fait UV MyREO : memes noms de dimensions que ViewsAjustReo (prefixe uv). */
-  val UV_PREFIX = "covid_uv"
+  val UV_PREFIX = "alim_uv"
   val V_UV_CONSO_ODS = s"${UV_PREFIX}_conso_ods"
   val V_UV_SUPER_PHASE_CODE = s"${UV_PREFIX}_super_phase_code"
   val V_UV_SUPER_PHASE_CHECKED = s"${UV_PREFIX}_super_phase_checked"
   val V_UV_DIM_SUPER_PHASE = s"${UV_PREFIX}_dim_super_phase"
   val V_UV_DC_CONSO = s"${UV_PREFIX}_dc_conso"
 
-  val V_MSSQL_AJU = "covid_mssql_aju"
-  val V_MSSQL_REF_DATA_TYPE = "covid_mssql_ref_data_type"
+  val V_MSSQL_AJU = "alim_mssql_aju"
+  val V_MSSQL_REF_DATA_TYPE = "alim_mssql_ref_data_type"
 
-  val V_EXP_AJU_AGG = "covid_exp_aju_agg"
-  val V_EXP_LK_PCI = "covid_exp_lk_pci"
-  val V_EXP_LK_TYPE_CA = "covid_exp_lk_type_ca"
-  val V_EXP_LK_SKIPPER = "covid_exp_lk_skipper"
-  val V_EXP_LK_CA_SNRG = "covid_exp_lk_ca_snrg"
-  val V_EXP_DC_CONSO = "covid_exp_dc_conso"
+  val V_EXP_AJU_AGG = "alim_exp_aju_agg"
+  val V_EXP_LK_PCI = "alim_exp_lk_pci"
+  val V_EXP_LK_TYPE_CA = "alim_exp_lk_type_ca"
+  val V_EXP_LK_SKIPPER = "alim_exp_lk_skipper"
+  val V_EXP_LK_CA_SNRG = "alim_exp_lk_ca_snrg"
+  val V_EXP_DC_CONSO = "alim_exp_dc_conso"
 
-  val V_DEP_INPUT = "covid_dep_input"
+  val V_DEP_INPUT = "alim_dep_input"
 
   /** Les 14 fichiers de ventilation, dans l'ordre des tFileOutputDelimited Talend. */
   val VENTIL_FILES: Seq[String] = Seq("ytd", "mtd", "qtd", "fq", "fy", "mtdetp", "qtdetp", "fqetp", "fyetp",

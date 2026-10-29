@@ -2,7 +2,7 @@ package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.SparkTestBase
 import com.bsy.datalake.reo.TestData.{df, tempDir, writeText}
-import com.bsy.datalake.reo.utility.{CustomSchemaCovidReo, Utils}
+import com.bsy.datalake.reo.utility.{CustomSchemaAlimReo, Utils}
 import com.typesafe.config.ConfigFactory
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Row}
@@ -12,11 +12,11 @@ import org.scalatest.matchers.should.Matchers
 import java.sql.Timestamp
 
 /**
- * Jobs d'echange SQL Server de la chaine COVID : LUD_REO_AJU_FROM_MSSQL_TO_HDFS,
+ * Jobs d'echange SQL Server de la chaine ALIM : LUD_REO_AJU_FROM_MSSQL_TO_HDFS,
  * LUD_REO_EXP_AJU_ADD_GTS_SKIPPER_FROM_HDFS_TO_MSSQL, LUD_EXP_SQLDB_CONSO_DATA_REO_FROM_UV_TO_MSSQL_STOCK, et la
  * recopie vers le depot AJUST (LUD_REO_AJUST_ODS_TO_ARCHIVE).
  */
-class MainMapperCovidMssqlSpec extends AnyFlatSpec with Matchers with SparkTestBase with CustomSchemaCovidReo {
+class MainMapperAlimMssqlSpec extends AnyFlatSpec with Matchers with SparkTestBase with CustomSchemaAlimReo {
 
   private val config = ConfigFactory.empty()
 
@@ -45,10 +45,10 @@ class MainMapperCovidMssqlSpec extends AnyFlatSpec with Matchers with SparkTestB
     Map("data_type_code_lvl_1" -> "AJU_BIS", "data_type_code_lvl_2" -> "T1", "is_active" -> 1),
     Map("data_type_code_lvl_1" -> "AJU", "data_type_code_lvl_2" -> "T2", "is_active" -> 0))
 
-  behavior of "MainMapperCovidAjuFromMssql"
+  behavior of "MainMapperAlimAjuFromMssql"
 
   it should "garder les types actifs (doublons ALL_MATCHES), montants en Double.toString et date dd-MM-yyyy" in {
-    val out = new MainMapperCovidAjuFromMssql(spark,
+    val out = new MainMapperAlimAjuFromMssql(spark,
       ajustments(ajustment(1, "T1", "10000000"), ajustment(2, "T2", "1")), types, config).fetchMapping
     out.schema.fieldNames.toSeq shouldBe schemaAjustDetail.fieldNames.toSeq
     Utils.toDelimitedLines(out, ";").collect().toSeq shouldBe Seq.fill(2)(
@@ -57,7 +57,7 @@ class MainMapperCovidMssqlSpec extends AnyFlatSpec with Matchers with SparkTestB
 
   it should "refuser une ligne a montant nul (colonne primitive chez Talend)" in {
     an[IllegalStateException] should be thrownBy
-      new MainMapperCovidAjuFromMssql(spark, ajustments(ajustment(1, "T1", null)), types, config).fetchMapping
+      new MainMapperAlimAjuFromMssql(spark, ajustments(ajustment(1, "T1", null)), types, config).fetchMapping
   }
 
   // ------------------------------------------------------------------------------------------------
@@ -70,7 +70,7 @@ class MainMapperCovidMssqlSpec extends AnyFlatSpec with Matchers with SparkTestB
       "nrg" -> "N", "snrg" -> "SN", "pci" -> pci, "activity_center" -> ca, "conversion" -> conversion,
       "Amount" -> amount, "comment" -> null, "input_user" -> "u", "input_date" -> date)
 
-  private def export(rows: Map[String, Any]*): DataFrame = new MainMapperCovidAjuExport(spark,
+  private def export(rows: Map[String, Any]*): DataFrame = new MainMapperAlimAjuExport(spark,
     df(spark, schemaAjustAggExport, rows: _*),
     df(spark, schemaLkPci, Map("pci_id" -> 1, "Numero_compte" -> "P1", "Code_Sous_nrg" -> "SN1")),
     df(spark, schemaLkGtsTypeCa, Map("CODE_TYPE_CA" -> "TCA", "LABEL_TYPE_CA" -> " LBL ", "CODE_CA0" -> "CA1"),
@@ -80,7 +80,7 @@ class MainMapperCovidMssqlSpec extends AnyFlatSpec with Matchers with SparkTestB
       Map("Code_CA" -> "AUTRE", "code_snrg" -> "SN1", "code_centre_activite" -> "CA1", "Code_classification" -> "NULL")),
     config).fetchMapping
 
-  behavior of "MainMapperCovidAjuExport"
+  behavior of "MainMapperAlimAjuExport"
 
   it should "produire les 23 colonnes de hdfs_import_ajustment_reo avec les regles propres a l'export" in {
     val out = export(
@@ -119,10 +119,10 @@ class MainMapperCovidMssqlSpec extends AnyFlatSpec with Matchers with SparkTestB
     Utils.readRawDelimited(spark, file.getPath, schemaDcConsoText, ";", headerLines = 0)
   }
 
-  behavior of "MainMapperCovidDcConsoExport"
+  behavior of "MainMapperAlimDcConsoExport"
 
   it should "typer le fait UV pour dc_conso_delta (vide -> null, Classification_Id vide -> 0)" in {
-    val out = new MainMapperCovidDcConsoExport(spark,
+    val out = new MainMapperAlimDcConsoExport(spark,
       dcConsoText("1;2;3;4;5;6;7;8;9;10;1.5000000000000000;11;12;13;14", ""), config).fetchMapping
     out.schema.fieldNames.toSeq shouldBe schemaDcConso.fieldNames.toSeq
     out.schema("montant").dataType shouldBe DecimalType(32, 16)
@@ -132,17 +132,17 @@ class MainMapperCovidMssqlSpec extends AnyFlatSpec with Matchers with SparkTestB
   }
 
   it should "refuser une valeur non numerique avant tout vidage de la table" in {
-    an[IllegalStateException] should be thrownBy new MainMapperCovidDcConsoExport(spark,
+    an[IllegalStateException] should be thrownBy new MainMapperAlimDcConsoExport(spark,
       dcConsoText("1;2;3;x;5;6;7;8;9;10;1.5;11;12;13;14"), config).fetchMapping
   }
 
   // ------------------------------------------------------------------------------------------------
   // LUD_REO_AJUST_ODS_TO_ARCHIVE
   // ------------------------------------------------------------------------------------------------
-  "MainMapperCovidAjustDepot" should "recopier le fichier, ajustment_id vide -> 0 et decimaux a 16 decimales" in {
+  "MainMapperAlimAjustDepot" should "recopier le fichier, ajustment_id vide -> 0 et decimaux a 16 decimales" in {
     val input = df(spark, schemaAjustDetail, Map("perimeter" -> "P", "eurohist" -> "12.5", "lmlocal" -> "1.0E-4",
       "input_date" -> "15-04-2026"))
-    val out = new MainMapperCovidAjustDepot(spark, input, schemaAjustDetail.fieldNames, config).fetchMapping
+    val out = new MainMapperAlimAjustDepot(spark, input, schemaAjustDetail.fieldNames, config).fetchMapping
     Utils.toDelimitedLines(out, ";").collect().toSeq shouldBe
       Seq("0;P;;;;;;;;;;;;;12.5000000000000000;0.0001000000000000;;;15-04-2026")
   }

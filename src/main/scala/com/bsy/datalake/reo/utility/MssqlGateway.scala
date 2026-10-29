@@ -16,7 +16,7 @@ final case class ProcResult(returnCode: Option[Int], message: Option[String]) {
 }
 
 /**
- * Acces SQL Server de la chaine COVID (remplace tMSSqlConnection, tMSSqlSP, tMSSqlInput et tMSSqlOutput).
+ * Acces SQL Server de la chaine ALIM (remplace tMSSqlConnection, tMSSqlSP, tMSSqlInput et tMSSqlOutput).
  * Trait separe de l'implementation JDBC : les tests de bout en bout utilisent une base simulee.
  */
 trait MssqlGateway {

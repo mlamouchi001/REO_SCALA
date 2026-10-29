@@ -1,6 +1,6 @@
-# Analyse du job Talend LUD_FLOW_AJUSTEMENT_REO_COVID (v0.1)
+# Analyse de l'orchestrateur Talend d'alimentation REO (v0.1)
 
-Source analysée : export `project_existant/LUD_FLOW_AJUSTEMENT_REO_COVID` (Talend 8, projet BSY_A2918, dossier `LUD_MINI_CHAINE_REO`).
+Source analysée : export de l'orchestrateur Talend d'alimentation REO (Talend 8, projet BSY_A2918, dossier `LUD_MINI_CHAINE_REO`).
 L'export contient le `.item` de l'orchestrateur, ses contextes, et 20 jars : l'orchestrateur et ses 19 jobs enfants. Les jobs enfants n'y figurent que sous forme compilée.
 Méthode : lecture du `.item` et des contextes, puis décompilation des 20 jars (CFR) pour la logique exacte de chaque composant. Les contextes des jobs Spark, absents de l'export, ont été lus dans leurs jars.
 
@@ -10,7 +10,7 @@ Aucun mot de passe ni compte SQL Server n'est recopié dans ce document. Les com
 
 | Bloc | Job | Type | Rôle |
 |---|---|---|---|
-| | `LUD_FLOW_AJUSTEMENT_REO_COVID` | Standard | Orchestrateur : 8 tRunJob en séquence |
+| | Orchestrateur d'alimentation REO | Standard | Orchestrateur : 8 tRunJob en séquence |
 | MyREO | `LUD_FLOW_MY_REO_TOOL` | Standard | Sous-orchestrateur, piloté par `reomaker_active.csv` |
 | MyREO | `MYREO_ORCHESTRATION_DATA_TO_SV` | Standard | Listing du dépôt MyREO (sans usage), appel de `MYREO_REO_RD_TO_SV` |
 | MyREO | `MYREO_REO_RD_TO_SV` | Standard | `bv_reo/reomaker/reomaker.csv` vers le fichier SV MyREO |
@@ -37,7 +37,7 @@ Soit 7 jobs Spark et 12 jobs Standard, dont 7 en échange avec SQL Server (pilot
 
 ```mermaid
 flowchart TD
-  O["LUD_FLOW_AJUSTEMENT_REO_COVID"] --> T["1. LUD_FLOW_MY_REO_TOOL"]
+  O["Orchestrateur alimentation REO"] --> T["1. LUD_FLOW_MY_REO_TOOL"]
   T --> F{"reomaker_active.csv<br/>une itération par ligne"}
   F -->|"is_active = 1"| D1["MYREO_ORCHESTRATION_DATA_TO_SV<br/>-> MYREO_REO_RD_TO_SV"]
   D1 --> J1["LUD_AJUST_REO_CALCULATION_SPARK (J1)"]
@@ -147,8 +147,8 @@ flowchart LR
 |---|---|---|---|
 | 1 | Bloquant probable | J1 lit `BSY_ROOT_SV_REO + AJU_REO_IN` avec `AJU_REO_IN` = deux tabulations (valeur DEV, jamais surchargée) | Chemin inexistant : J1, MY_REO_TOOL et toute la chaîne devraient échouer. À vérifier dans les logs YARN de production |
 | 2 | Élevée | Dépôt MyREO listé sur `/dev/raw/...` même en production (`IPF_RD_ROOT_PATH_IN` figé en DEV) | Échec si le dossier n'existe pas ; sinon liste NEW de la chaîne MYREO écrasée avec des chemins DEV |
-| 3 | Élevée | Fichier SV MyREO commun aux chaînes MYREO et COVID, en écrasement | La dernière chaîne exécutée gagne (`MYREO_TOOL` contre `REOMAKER`) |
-| 4 | Élevée | Liste NEW et historique MYREO modifiés par COVID (ligne `;;1` à chaque passage) | Collision avec la chaîne MYREO, croissance non bornée de l'historique |
+| 3 | Élevée | Fichier SV MyREO commun aux chaînes MYREO et ALIM, en écrasement | La dernière chaîne exécutée gagne (`MYREO_TOOL` contre `REOMAKER`) |
+| 4 | Élevée | Liste NEW et historique MYREO modifiés par ALIM (ligne `;;1` à chaque passage) | Collision avec la chaîne MYREO, croissance non bornée de l'historique |
 | 5 | Moyenne | K lignes actives dans `reomaker_active.csv` : K exécutions du bloc MyREO, K² de RD_TO_SV | Même état final, coût multiplié ; colonne `reomaker` sans effet |
 | 6 | Élevée | Conso MyREO : montant lu en `DECIMAL(17,12)` (moins de 100 000 en valeur absolue) | Montants plus grands perdus ou en erreur selon le lecteur Talend : à vérifier sur données réelles |
 | 7 | Élevée | Taux des correspondances `gd2_qtd_fq` et `gd2_ytd_fy` appliqué en FQM / FYM par J2, ignoré par J1 | Une des deux versions est probablement fautive ; sans effet si le taux vaut 1 |

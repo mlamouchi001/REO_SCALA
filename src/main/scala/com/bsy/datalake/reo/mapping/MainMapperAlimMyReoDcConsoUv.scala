@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.{AbstractMapperProvider, UvDimensions}
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.bsy.datalake.reo.utility.ReoConstants.CONF_ROOT
 import com.bsy.datalake.reo.utility.DataQuality
 import com.typesafe.config.Config
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory
  * tSqlRow_3 supprimait sans trace les lignes dont une dimension est inconnue : leur nombre est journalise, par
  * colonne nulle (Talend n'en laissait aucune trace).
  */
-class MainMapperCovidMyReoDcConsoUv(sparkSession: SparkSession,
+class MainMapperAlimMyReoDcConsoUv(sparkSession: SparkSession,
                                     consoOdsDf: DataFrame,
                                     dims: UvDimensions,
                                     config: Config)
@@ -27,7 +27,7 @@ class MainMapperCovidMyReoDcConsoUv(sparkSession: SparkSession,
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def enrichDataFrame: DataFrame = {
-    log.info("**** MainMapperCovidMyReoDcConsoUv start ****")
+    log.info("**** MainMapperAlimMyReoDcConsoUv start ****")
 
     val p = UV_PREFIX
     consoOdsDf.createOrReplaceTempView(V_UV_CONSO_ODS)
@@ -67,7 +67,7 @@ class MainMapperCovidMyReoDcConsoUv(sparkSession: SparkSession,
     }
 
     val dfFinal = sparkSession.sql(uv_not_null_sql)
-    log.info("**** MainMapperCovidMyReoDcConsoUv end ****")
+    log.info("**** MainMapperAlimMyReoDcConsoUv end ****")
     dfFinal
   }
 }

@@ -1,9 +1,9 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.bsy.datalake.reo.utility.ReoConstants.CONF_ROOT
-import com.bsy.datalake.reo.utility.{CovidRules, DataQuality}
+import com.bsy.datalake.reo.utility.{AlimRules, DataQuality}
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.storage.StorageLevel
@@ -13,7 +13,7 @@ import scala.collection.mutable.ArrayBuffer
 
 /**
  * Parametres d'une ventilation : tables m_* (mois source -> mois cible), year_mapping et les cinq correspondances
- * ETP relatives, indexees par ViewsCovidReo.ETP_MAPPINGS (gd1_gd2, mtd_qtd, mtd_ytd, qtd_fq, ytd_fy).
+ * ETP relatives, indexees par ViewsAlimReo.ETP_MAPPINGS (gd1_gd2, mtd_qtd, mtd_ytd, qtd_fq, ytd_fy).
  */
 final case class VentilParams(mMtd: DataFrame,
                               mQtd: DataFrame,
@@ -38,7 +38,7 @@ final case class VentilParams(mMtd: DataFrame,
  * Les 14 branches (`branches`) sont persistees : le driver les ecrit dans le dossier ventil pour la tracabilite,
  * puis libere le cache (`release`).
  */
-class MainMapperCovidVentilation(sparkSession: SparkSession,
+class MainMapperAlimVentilation(sparkSession: SparkSession,
                                  layout: VentilLayout,
                                  inputDf: DataFrame,
                                  mpEqualDf: Option[DataFrame],
@@ -58,8 +58,8 @@ class MainMapperCovidVentilation(sparkSession: SparkSession,
 
   /** Les 14 sorties intermediaires, dans l'ordre et sous le nom des fichiers Talend. */
   lazy val branches: Seq[(String, DataFrame)] = {
-    log.info(s"**** MainMapperCovidVentilation (${layout.prefix}) : branches ****")
-    CovidRules.registerUdfs(sparkSession)
+    log.info(s"**** MainMapperAlimVentilation (${layout.prefix}) : branches ****")
+    AlimRules.registerUdfs(sparkSession)
 
     inputDf.createOrReplaceTempView(layout.view(V_VENTIL_INPUT))
     params.mMtd.createOrReplaceTempView(layout.view(V_VENTIL_M_MTD))
@@ -112,7 +112,7 @@ class MainMapperCovidVentilation(sparkSession: SparkSession,
 
   override def enrichDataFrame: DataFrame = {
     branches
-    log.info(s"**** MainMapperCovidVentilation (${layout.prefix}) : agregat ****")
+    log.info(s"**** MainMapperAlimVentilation (${layout.prefix}) : agregat ****")
     sparkSession.sql(ventilAggregateSql(layout))
   }
 

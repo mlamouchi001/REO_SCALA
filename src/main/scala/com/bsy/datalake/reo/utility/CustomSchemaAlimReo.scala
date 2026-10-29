@@ -3,11 +3,11 @@ package com.bsy.datalake.reo.utility
 import org.apache.spark.sql.types.{DataTypes, DecimalType, DoubleType, IntegerType, StringType, StructField, StructType}
 
 /**
- * Schemas Spark de la chaine COVID, dans l'ordre exact des schemas Talend (lecture positionnelle).
+ * Schemas Spark de la chaine ALIM, dans l'ordre exact des schemas Talend (lecture positionnelle).
  * Les schemas deja definis pour AJUST (ajustements 19 colonnes, PCI, GTS, referentiels UV, conso) et pour MYREO
- * (extraction 10 colonnes) sont herites : les jobs COVID lisent les memes fichiers au meme format.
+ * (extraction 10 colonnes) sont herites : les jobs ALIM lisent les memes fichiers au meme format.
  */
-trait CustomSchemaCovidReo extends CustomSchemaAjustReo with CustomSchemaMyReo {
+trait CustomSchemaAlimReo extends CustomSchemaAjustReo with CustomSchemaMyReo {
 
   /** BigDecimal Talend precision 26 / echelle 18 : taux des correspondances ETP. */
   val DecimalRate: DecimalType = DataTypes.createDecimalType(26, 18)

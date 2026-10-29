@@ -338,7 +338,7 @@ object ViewsAjustReo {
    * Pas de correspondance -> id null : les sorties Talend sont des Integer nullables. Exception :
    * superphase_id, int primitif chez Talend, controle non nul par DataQuality.failIfNull.
    * Hints BROADCAST : equivalent des "Use replicated join" coches dans le job (petits referentiels).
-   * `p` = prefixe des vues (uv pour AJUST, covid_uv pour le fait MyREO de la chaine COVID, aux tMap identiques) :
+   * `p` = prefixe des vues (uv pour AJUST, alim_uv pour le fait MyREO de la chaine ALIM, aux tMap identiques) :
    * <p>_super_phase_checked et <p>_dim_<referentiel>.
    */
   def dcConsoSql(p: String): String =

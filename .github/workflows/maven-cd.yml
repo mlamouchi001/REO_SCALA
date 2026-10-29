@@ -1,5 +1,5 @@
 # CD du projet BSY_REO : deploiement depuis JFrog par le job template AWX, avec le fichier vault.conf
-# de la chaine covid (identifiants SQL Server lus dans Vault, cf. conf/vault.conf.template).
+# de la chaine alim (identifiants SQL Server lus dans Vault, cf. conf/vault.conf.template).
 # Les workflows reutilisables viennent du depot generique DTUTransverse/reusable-github-actions.
 #
 # Prerequis du depot :

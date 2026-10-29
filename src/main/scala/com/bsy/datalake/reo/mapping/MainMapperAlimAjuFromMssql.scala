@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.bsy.datalake.reo.utility.DataQuality
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory
  * Talend lisait ajustment_id, eurohist, lmlocal et is_cancel_row en types primitifs : une valeur nulle levait une
  * exception, avalee par le job (code retour 0, fichier vide ou tronque). Ici le job s'arrete avant d'ecrire.
  */
-class MainMapperCovidAjuFromMssql(sparkSession: SparkSession,
+class MainMapperAlimAjuFromMssql(sparkSession: SparkSession,
                                   ajustmentDf: DataFrame,
                                   refDataTypeDf: DataFrame,
                                   config: Config)
@@ -24,7 +24,7 @@ class MainMapperCovidAjuFromMssql(sparkSession: SparkSession,
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def enrichDataFrame: DataFrame = {
-    log.info("**** MainMapperCovidAjuFromMssql start ****")
+    log.info("**** MainMapperAlimAjuFromMssql start ****")
 
     ajustmentDf.createOrReplaceTempView(V_MSSQL_AJU)
     refDataTypeDf.createOrReplaceTempView(V_MSSQL_REF_DATA_TYPE)
@@ -38,7 +38,7 @@ class MainMapperCovidAjuFromMssql(sparkSession: SparkSession,
     }
 
     val dfFinal = sparkSession.sql(mssql_aju_sql)
-    log.info("**** MainMapperCovidAjuFromMssql end ****")
+    log.info("**** MainMapperAlimAjuFromMssql end ****")
     dfFinal
   }
 }

@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.bsy.datalake.reo.utility.ReoConstants.CONF_ROOT
 import com.bsy.datalake.reo.utility.DataQuality
 import com.typesafe.config.Config
@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory
  *
  * Le job ne filtre pas sur le type de donnees : le meme resultat est ecrit dans le dossier de chaque type actif.
  */
-class MainMapperCovidMyReoConsoBv(sparkSession: SparkSession,
+class MainMapperAlimMyReoConsoBv(sparkSession: SparkSession,
                                   ajuAggDf: DataFrame,
                                   mpEqualDf: DataFrame,
                                   mpDiffDf: DataFrame,
@@ -31,7 +31,7 @@ class MainMapperCovidMyReoConsoBv(sparkSession: SparkSession,
   private val LegacyAmountLimit = 100000
 
   override def enrichDataFrame: DataFrame = {
-    log.info("**** MainMapperCovidMyReoConsoBv start ****")
+    log.info("**** MainMapperAlimMyReoConsoBv start ****")
 
     ajuAggDf.createOrReplaceTempView(V_CBV_AJU_AGG)
     // tFileInputDelimited_2 lit mp_nrg_pci/* avec 3 colonnes : equal (4e colonne indicator ignoree) et diff.
@@ -54,7 +54,7 @@ class MainMapperCovidMyReoConsoBv(sparkSession: SparkSession,
     sparkSession.sql(conso_to_agg_sql).createOrReplaceTempView(V_CBV_TO_AGG)
     val dfFinal = sparkSession.sql(conso_year_filter_sql)
 
-    log.info("**** MainMapperCovidMyReoConsoBv end ****")
+    log.info("**** MainMapperAlimMyReoConsoBv end ****")
     dfFinal
   }
 }

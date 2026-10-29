@@ -4,13 +4,13 @@ Migration Scala / Spark de trois chaînes Talend REO du projet BSY_A2918, dans u
 
 - **AJUST** (`LUD_AJU_ORCHESTRATION_DELTA_REO`) : dispatch des fichiers d'ajustement REO, conso BV par type de données, enrichissement GTS Skipper, fait `dc_conso` en Usage View et archivage des types inactifs ;
 - **MYREO** (`LUD_MYREO_ORCHESTRATION_DATA_TO_SV`) : détection des nouvelles extractions de l'outil MyREO déposées en raw, puis production du fichier SV `Extract_Ajus_Outil_REO_pour_BSY_REO.csv` pour les types de données actifs ;
-- **COVID** (`LUD_FLOW_AJUSTEMENT_REO_COVID`) : table de correspondance NRG -> PCI ; bloc REOMAKER (fichier SV, ventilation des ajustements, conso, enrichissement GTS, fait UV, export vers SQL Server) ; ventilation des ajustements saisis dans SQL Server, export vers SQL Server et alimentation du dépôt de la chaîne AJUST.
+- **ALIM** (orchestrateur Talend d'alimentation REO) : table de correspondance NRG -> PCI ; bloc REOMAKER (fichier SV, ventilation des ajustements, conso, enrichissement GTS, fait UV, export vers SQL Server) ; ventilation des ajustements saisis dans SQL Server, export vers SQL Server et alimentation du dépôt de la chaîne AJUST.
 
 Conception reprise du template `FDA_TEMPLATE_PROJECT_SCALA` et du projet `EXP_ENG_FRG_SUV` : Driver, FetchSource, Runner, Mappers, requêtes Spark SQL, DataWriter. Un driver par chaîne, socle commun.
 
 - Analyse du job Talend AJUST : [docs/ANALYSE_TALEND_LUD_AJU_ORCHESTRATION_DELTA_REO.md](docs/ANALYSE_TALEND_LUD_AJU_ORCHESTRATION_DELTA_REO.md)
 - Analyse du job Talend MYREO : [docs/ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md](docs/ANALYSE_TALEND_LUD_MYREO_ORCHESTRATION_DATA_TO_SV.md)
-- Analyse du job Talend COVID : [docs/ANALYSE_TALEND_LUD_FLOW_AJUSTEMENT_REO_COVID.md](docs/ANALYSE_TALEND_LUD_FLOW_AJUSTEMENT_REO_COVID.md)
+- Analyse du job Talend ALIM : [docs/ANALYSE_TALEND_ALIM_REO.md](docs/ANALYSE_TALEND_ALIM_REO.md)
 - Conception de la cible : [docs/CONCEPTION_MIGRATION_SCALA.md](docs/CONCEPTION_MIGRATION_SCALA.md)
 - Requêtes de recette Talend contre Scala : [docs/recette_comparaison.sql](docs/recette_comparaison.sql)
 
@@ -19,17 +19,17 @@ Conception reprise du template `FDA_TEMPLATE_PROJECT_SCALA` et du projet `EXP_EN
 ```
 reo_scala
 ├── assembly/                    # fat jar + bundle zip de livraison
-├── bin/run_reo.sh               # lancement spark3-submit : chaîne (ajust | myreo | covid) et environnement
+├── bin/run_reo.sh               # lancement spark3-submit : chaîne (ajust | myreo | alim) et environnement
 ├── conf/reo_ajust.conf          # configuration du driver AJUST, tous environnements
 ├── conf/reo_myreo.conf          # configuration du driver MYREO, tous environnements
-├── conf/reo_alim.conf          # configuration du driver COVID, tous environnements (SQL Server compris)
-├── conf/vault.conf.template     # modèle du fichier vault.conf (AppRole Vault) de la chaîne COVID
+├── conf/reo_alim.conf          # configuration du driver ALIM, tous environnements (SQL Server compris)
+├── conf/vault.conf.template     # modèle du fichier vault.conf (AppRole Vault) de la chaîne ALIM
 ├── docs/                        # analyses Talend, conception, recette
 ├── jenkins/Jenkinsfile-*        # pipelines SG dev / fhml / prd (repris du template)
 ├── src/main/scala/com/bsy/datalake/reo/
 │   ├── job/                     # MainDriverAjustReo, MainDriverMyReo, MainDriverReo : orchestration des étapes
 │   ├── common/                  # FetchSource, Runner et contrats par chaîne, StepRunner, session Spark
-│   ├── mapping/                 # un mapper par job Talend de transformation + ViewsAjustReo / ViewsMyReo / ViewsCovidReo (Spark SQL)
+│   ├── mapping/                 # un mapper par job Talend de transformation + ViewsAjustReo / ViewsMyReo / ViewsAlimReo (Spark SQL)
 │   └── utility/                 # schémas, conf, écriture, dispatch AJUST, catalogue MYREO, accès SQL Server, qualité
 └── src/test/scala/...           # tests unitaires et tests de bout en bout des trois chaînes
 ```
@@ -51,14 +51,14 @@ export REO_PRINCIPAL=<principal Kerberos applicatif>
 export REO_KEYTAB=<chemin du keytab>
 bin/run_reo.sh ajust prd hdfs:///<chemin>/reo_ajust.conf
 bin/run_reo.sh myreo prd hdfs:///<chemin>/reo_myreo.conf
-bin/run_reo.sh covid prd hdfs:///<chemin>/reo_alim.conf
+bin/run_reo.sh alim prd hdfs:///<chemin>/reo_alim.conf
 ```
 
-Chaque driver attend deux arguments : l'environnement (`dev`, `int`, `hom`, `prd`) et le chemin HDFS de son fichier de configuration. Chaque driver a le sien : `reo_ajust.conf` pour AJUST, `reo_myreo.conf` pour MYREO, `reo_alim.conf` pour COVID. Le script choisit la classe et les ressources de la chaîne.
+Chaque driver attend deux arguments : l'environnement (`dev`, `int`, `hom`, `prd`) et le chemin HDFS de son fichier de configuration. Chaque driver a le sien : `reo_ajust.conf` pour AJUST, `reo_myreo.conf` pour MYREO, `reo_alim.conf` pour ALIM. Le script choisit la classe et les ressources de la chaîne.
 
 Le script lance `spark3-submit` (le jar est en Scala 2.12 ; sur CDP, `spark-submit` est Spark 2). Il refuse de soumettre si la classe du driver est absente du jar : c'est la cause d'un `ClassNotFoundException` sur YARN, avec un jar déployé plus ancien que le code.
 
-**SQL Server (chaîne COVID)** : même modèle que le projet PUSHSQLSERVER. Le compte et le mot de passe sont lus dans Vault (AppRole, `dfin.bsy.reo.mssqlserver` de `reo_alim.conf`), jamais dans la configuration. Avant le premier lancement :
+**SQL Server (chaîne ALIM)** : même modèle que le projet PUSHSQLSERVER. Le compte et le mot de passe sont lus dans Vault (AppRole, `dfin.bsy.reo.mssqlserver` de `reo_alim.conf`), jamais dans la configuration. Avant le premier lancement :
 
 1. créer `vault.conf` sur l'edge à partir de `conf/vault.conf.template` (`roleId`, `secretId` de l'AppRole BSY_A2918), hors du dépôt Git, en `chmod 600`. Le CD le fait lui-même (voir « CI/CD ») ;
 2. lancer avec `REO_VAULT_CONF=<chemin>/vault.conf` (défaut : `conf/vault.conf` du bundle) : le script l'envoie au driver YARN (`--files`) et positionne `vault_config_file` ;
@@ -115,7 +115,7 @@ Chaîne MYREO (`MainDriverMyReo`) :
 
 Les nouveaux fichiers ne sont marqués lus que si le fichier SV a été écrit dans le même run. Avec plusieurs nouveaux fichiers, seul le dernier alimente le SV, comme chez Talend.
 
-Chaîne COVID (`MainDriverReo`) :
+Chaîne ALIM (`MainDriverReo`) :
 
 | Étape | Interrupteur `dfin.bsy.reo.*` | Remplace |
 |---|---|---|

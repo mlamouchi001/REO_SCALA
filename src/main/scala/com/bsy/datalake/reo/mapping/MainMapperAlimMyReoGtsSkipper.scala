@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory
  *   -> tMap_4 (classification CA x sous-NRG) -> Parquet my_reo/conso_skipper/<dtype>.
  * Les sorties de mise au point ods/temp/sortie1.csv et sortie2.csv, sans consommateur, ne sont pas reprises.
  */
-class MainMapperCovidMyReoGtsSkipper(sparkSession: SparkSession,
+class MainMapperAlimMyReoGtsSkipper(sparkSession: SparkSession,
                                      consoDf: DataFrame,
                                      lkPciDf: DataFrame,
                                      lkGtsTypeCaDf: DataFrame,
@@ -24,7 +24,7 @@ class MainMapperCovidMyReoGtsSkipper(sparkSession: SparkSession,
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def enrichDataFrame: DataFrame = {
-    log.info("**** MainMapperCovidMyReoGtsSkipper start ****")
+    log.info("**** MainMapperAlimMyReoGtsSkipper start ****")
 
     consoDf.createOrReplaceTempView(V_GTS_CONSO)
     lkPciDf.createOrReplaceTempView(V_GTS_LK_PCI)
@@ -33,7 +33,7 @@ class MainMapperCovidMyReoGtsSkipper(sparkSession: SparkSession,
     lkCaSnrgDf.createOrReplaceTempView(V_GTS_LK_CA_SNRG)
     val dfFinal = sparkSession.sql(gts_skipper_enrich_sql)
 
-    log.info("**** MainMapperCovidMyReoGtsSkipper end ****")
+    log.info("**** MainMapperAlimMyReoGtsSkipper end ****")
     dfFinal
   }
 }

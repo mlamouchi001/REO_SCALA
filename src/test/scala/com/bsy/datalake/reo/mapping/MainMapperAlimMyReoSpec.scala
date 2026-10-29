@@ -3,17 +3,17 @@ package com.bsy.datalake.reo.mapping
 import com.bsy.datalake.reo.SparkTestBase
 import com.bsy.datalake.reo.TestData.{df, tempDir, writeText}
 import com.bsy.datalake.reo.common.UvDimensions
-import com.bsy.datalake.reo.utility.{CustomSchemaCovidReo, Utils}
+import com.bsy.datalake.reo.utility.{CustomSchemaAlimReo, Utils}
 import com.typesafe.config.ConfigFactory
 import org.apache.spark.sql.DataFrame
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 /**
- * Jobs de la table NRG -> PCI et du bloc MyREO de la chaine COVID : NRG_PCI_MAP, MYREO_REO_RD_TO_SV,
+ * Jobs de la table NRG -> PCI et du bloc MyREO de la chaine ALIM : NRG_PCI_MAP, MYREO_REO_RD_TO_SV,
  * LUD_AJUST_REO_CONSO_TO_BV_SPARK, REO_CONSO_ADD_GTS_SKIPPER_TO_BV_SPARK_MY_REO et _ODS_TO_UV_SPARK_MY_REO.
  */
-class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestBase with CustomSchemaCovidReo {
+class MainMapperAlimMyReoSpec extends AnyFlatSpec with Matchers with SparkTestBase with CustomSchemaAlimReo {
 
   private val config = ConfigFactory.parseString("dfin.bsy.reo.dq_checks = true")
   private def tuples(d: DataFrame): Set[Seq[Any]] = d.collect().map(_.toSeq).toSet
@@ -37,22 +37,22 @@ class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestB
   behavior of "Table NRG -> PCI (LUD_AJUST_REO_NRG_PCI_MAP_TO_SV_SPARK)"
 
   it should "isoler les comptes egaux au sous-NRG, une ligne par rubrique de la pyramide" in {
-    tuples(new MainMapperCovidNrgPciEqual(spark, rubrique, pci, config).fetchMapping) shouldBe
+    tuples(new MainMapperAlimNrgPciEqual(spark, rubrique, pci, config).fetchMapping) shouldBe
       Set(Seq("NRG1", "S100", "S100", "AGG1"), Seq("NRG1", "S100", "S100", "AGG2"))
   }
 
   it should "repartir les autres comptes en diff (classe 9) et diff9, puis garder le plus petit pci_id" in {
-    val diff = new MainMapperCovidNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = true, config).fetchMapping.collect()
+    val diff = new MainMapperAlimNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = true, config).fetchMapping.collect()
     diff.map(_.toSeq).toSeq shouldBe Seq(Seq(2, "NRG1", "S100", "9001"), Seq(2, "NRG1", "S100", "9001"))
-    tuples(new MainMapperCovidNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = false, config).fetchMapping) shouldBe
+    tuples(new MainMapperAlimNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = false, config).fetchMapping) shouldBe
       Set(Seq(3, "NRG2", "S200", "7001"))
   }
 
   it should "ecarter de mp_nrg_pci/diff les sous-NRG deja presents dans equal" in {
-    val all = new MainMapperCovidNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = true, config).fetchMapping
-      .union(new MainMapperCovidNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = false, config).fetchMapping)
-    val equal = new MainMapperCovidNrgPciEqual(spark, rubrique, pci, config).fetchMapping
-    tuples(new MainMapperCovidNrgPciDiff(spark, all, equal, config).fetchMapping) shouldBe
+    val all = new MainMapperAlimNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = true, config).fetchMapping
+      .union(new MainMapperAlimNrgPciOdsDiff(spark, rubrique, pci, startsWith9 = false, config).fetchMapping)
+    val equal = new MainMapperAlimNrgPciEqual(spark, rubrique, pci, config).fetchMapping
+    tuples(new MainMapperAlimNrgPciDiff(spark, all, equal, config).fetchMapping) shouldBe
       Set(Seq("NRG2", "S200", "7001"))
   }
 
@@ -70,10 +70,10 @@ class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestB
     Map("data_type_code_lvl_1" -> "AJU", "data_type_code_lvl_2" -> code, "is_active" -> active)
   }: _*)
 
-  behavior of "MainMapperCovidReomakerToSv"
+  behavior of "MainMapperAlimReomakerToSv"
 
   it should "recopier les valeurs brutes, une ligne par type actif, Data_Source REOMAKER et montant strict" in {
-    val out = new MainMapperCovidReomakerToSv(spark,
+    val out = new MainMapperAlimReomakerToSv(spark,
       reomaker("2026;04;E1;EUROHIST;IND1;RE;YTD;CA1;X;1234.5", "\"2026\";05;E2;LMLOCAL;IND2;RE;YTD;CA2;X;", ""),
       types("T_A" -> 1, "T_OLD" -> 0, "T_B" -> 1), config).fetchMapping
     out.schema.fieldNames.toSeq shouldBe schemaMyReoSv.fieldNames.toSeq
@@ -87,19 +87,19 @@ class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestB
   }
 
   it should "garder une ligne a Data_Type vide si le referentiel est vide, et echouer sur un montant invalide" in {
-    Utils.toDelimitedLines(new MainMapperCovidReomakerToSv(spark, reomaker("2026;04;E1;C;N;RE;YTD;CA;X;1e7"),
+    Utils.toDelimitedLines(new MainMapperAlimReomakerToSv(spark, reomaker("2026;04;E1;C;N;RE;YTD;CA;X;1e7"),
       types(), config).fetchMapping, ";").collect().toSeq shouldBe Seq("RE;202604;YTD;C;;REOMAKER;E1;CA;N;1.0E7")
-    val e = the[IllegalStateException] thrownBy new MainMapperCovidReomakerToSv(spark,
+    val e = the[IllegalStateException] thrownBy new MainMapperAlimReomakerToSv(spark,
       reomaker("2026;04;E1;C;N;RE;YTD;CA;X;\"12\""), types("T_A" -> 1), config).fetchMapping
     e.getMessage should include("1 montant(s) non numerique(s) (ex. '\"12\"')")
-    an[IllegalStateException] should be thrownBy new MainMapperCovidReomakerToSv(spark,
+    an[IllegalStateException] should be thrownBy new MainMapperAlimReomakerToSv(spark,
       reomaker("2026;04;E1;C;N;RE;YTD;CA;X;1"), types("T_A" -> null), config).fetchMapping
   }
 
   // ------------------------------------------------------------------------------------------------
   // LUD_AJUST_REO_CONSO_TO_BV_SPARK
   // ------------------------------------------------------------------------------------------------
-  behavior of "MainMapperCovidMyReoConsoBv"
+  behavior of "MainMapperAlimMyReoConsoBv"
 
   it should "deduire le code PCI de l'indicateur, filtrer les annees A0 a A2, sans agregation" in {
     def agg(period: String, indicator: String, amount: String) = Map("Phase" -> "RE", "Period" -> period,
@@ -116,7 +116,7 @@ class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestB
     val years = df(spark, schemaYearMapping, Map("relative_year_code" -> "A0", "year_code" -> "2026"),
       Map("relative_year_code" -> "A7", "year_code" -> "2019"))
 
-    val out = new MainMapperCovidMyReoConsoBv(spark, aju, equal, diff, years, config).fetchMapping
+    val out = new MainMapperAlimMyReoConsoBv(spark, aju, equal, diff, years, config).fetchMapping
     out.schema.fieldNames.toSeq shouldBe schemaConso.fieldNames.toSeq
     out.collect().map(r => (r.getAs[String]("period_mois"), r.getAs[String]("code_pci"),
       r.getAs[java.math.BigDecimal]("montant").toPlainString)).toSet shouldBe Set(
@@ -129,13 +129,13 @@ class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestB
   // ------------------------------------------------------------------------------------------------
   // REO_CONSO_ADD_GTS_SKIPPER_TO_BV_SPARK_MY_REO
   // ------------------------------------------------------------------------------------------------
-  behavior of "MainMapperCovidMyReoGtsSkipper"
+  behavior of "MainMapperAlimMyReoGtsSkipper"
 
   it should "joindre la classification sur (code_snrg, code_centre_activite) et garder la valeur NULL" in {
     def conso(pci: String, ca: String) = Map("periode_annee" -> "2026", "period_mois" -> "04", "code_entite" -> "E1",
       "code_conversion" -> "EUROHIST", "code_pci" -> pci, "phase_code" -> "RE", "cumul_code" -> "FY",
       "slm_activite_code" -> ca, "data_type_code" -> "T1", "data_source_code" -> "REOMAKER", "montant" -> "1")
-    val out = new MainMapperCovidMyReoGtsSkipper(spark,
+    val out = new MainMapperAlimMyReoGtsSkipper(spark,
       df(spark, schemaConso, conso("P1", "CA1"), conso("P1", "CA2"), conso("P2", "CA9")),
       df(spark, schemaDimPci, Map("pci_id" -> 1, "Numero_compte" -> "P1", "Code_Sous_nrg" -> "SN1")),
       df(spark, schemaLkGtsTypeCa, Map("CODE_TYPE_CA" -> "TCA", "LABEL_TYPE_CA" -> "LBL", "CODE_CA0" -> "CA1")),
@@ -183,10 +183,10 @@ class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestB
     gtsTypeCa = df(spark, schemaDimGtsTypeCa, Map("gts_type_ca_id" -> 71, "code_type_ca" -> "TCA1")),
     classification = df(spark, schemaDimClassification, Map("Classification_Id" -> 81, "Code_Classification" -> "CLS1")))
 
-  behavior of "MainMapperCovidMyReoDcConsoUv"
+  behavior of "MainMapperAlimMyReoDcConsoUv"
 
   it should "suffixer _CST en EUROCST, forcer NC en LMLOCAL, et ne garder que les lignes aux cles connues" in {
-    val out = new MainMapperCovidMyReoDcConsoUv(spark, df(spark, schemaConsoOds,
+    val out = new MainMapperAlimMyReoDcConsoUv(spark, df(spark, schemaConsoOds,
       ods("EUROHIST"), ods("EUROCST"), ods("EUROCST", cumul = "FQ", mois = "05"), ods("LMLOCAL"),
       ods("EUROHIST", entite = null),                  // entite nulle -> 'NA' (isEmpty(trim(null)))
       ods("EUROHIST", classification = "INCONNUE")),   // classification inconnue : ligne ecartee (tSqlRow_3)
@@ -197,10 +197,10 @@ class MainMapperCovidMyReoSpec extends AnyFlatSpec with Matchers with SparkTestB
     out.count() shouldBe 5
   }
 
-  "ViewsCovidReo.uv_super_phase_code_sql" should "garder M00 dans le cas residuel et ne suffixer _CST que la conversion EUROCST" in {
+  "ViewsAlimReo.uv_super_phase_code_sql" should "garder M00 dans le cas residuel et ne suffixer _CST que la conversion EUROCST" in {
     df(spark, schemaConsoOds, ods("EUROCST", cumul = "MTD"), ods("AUTRE", cumul = "FQ"))
-      .createOrReplaceTempView(ViewsCovidReo.V_UV_CONSO_ODS)
-    spark.sql(ViewsCovidReo.uv_super_phase_code_sql).collect().map(_.getAs[String]("super_phase_code")).toSet shouldBe
+      .createOrReplaceTempView(ViewsAlimReo.V_UV_CONSO_ODS)
+    spark.sql(ViewsAlimReo.uv_super_phase_code_sql).collect().map(_.getAs[String]("super_phase_code")).toSet shouldBe
       Set("RE_MTD_2026_M00_CST", "RE_FQ_2026_M06")
   }
 }

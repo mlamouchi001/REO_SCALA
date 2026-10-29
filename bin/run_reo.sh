@@ -3,13 +3,13 @@
 # Lancement d'une chaine REO : remplace les scripts *_run.sh des jobs Talend
 #   ajust : LUD_AJU_ORCHESTRATION_DELTA_REO     -> com.bsy.datalake.reo.job.MainDriverAjustReo
 #   myreo : LUD_MYREO_ORCHESTRATION_DATA_TO_SV  -> com.bsy.datalake.reo.job.MainDriverMyReo
-#   covid : LUD_FLOW_AJUSTEMENT_REO_COVID       -> com.bsy.datalake.reo.job.MainDriverReo
+#   alim  : orchestrateur Talend alimentation   -> com.bsy.datalake.reo.job.MainDriverReo
 #
 # Usage : run_reo.sh <chaine> <env> <conf_hdfs> [--conf spark.x=y ...]
-#   chaine    : ajust | myreo | covid
+#   chaine    : ajust | myreo | alim
 #   env       : dev | int | hom | prd | rec
 #   conf_hdfs : chemin HDFS du fichier de configuration du driver de la chaine :
-#               reo_ajust.conf pour ajust, reo_myreo.conf pour myreo, reo_alim.conf pour covid
+#               reo_ajust.conf pour ajust, reo_myreo.conf pour myreo, reo_alim.conf pour alim
 #               (ex. hdfs:///prd/app/bsy_a2918/conf/reo_ajust.conf)
 # Kerberos  : variables REO_PRINCIPAL et REO_KEYTAB (equivalent des contextes PrincipalProject_* et
 #             keytabProject_* des jobs Talend).
@@ -17,10 +17,10 @@
 #
 # Ressources ajust : reprises des jobs Spark Talend (driver 16g / 4 coeurs, executeurs 4 coeurs,
 # allocation dynamique). Ressources myreo : reduites, la chaine Talend etait faite de jobs Standard
-# (JVM de 1 Go) et traite un fichier d'extraction a la fois. Ressources covid : celles des jobs Spark Talend
+# (JVM de 1 Go) et traite un fichier d'extraction a la fois. Ressources alim : celles des jobs Spark Talend
 # de la chaine (driver 16g / 4 coeurs). A ajuster apres une premiere mesure.
 #
-# Chaine covid, identifiants SQL Server lus dans Vault (comme PUSHSQLSERVER) : le fichier vault.conf (roleId,
+# Chaine alim, identifiants SQL Server lus dans Vault (comme PUSHSQLSERVER) : le fichier vault.conf (roleId,
 # secretId ; modele conf/vault.conf.template) est envoye au driver YARN par --files, et vault_config_file le
 # designe. Chemin sur l'edge : REO_VAULT_CONF (defaut <bundle>/conf/vault.conf).
 # Variables surchargeables : SPARK_SUBMIT (defaut spark3-submit : le jar est en Scala 2.12, spark-submit est
@@ -28,7 +28,7 @@
 # ======================================================================================================
 set -eu
 
-CHAIN="${1:?chaine attendue : ajust | myreo | covid}"
+CHAIN="${1:?chaine attendue : ajust | myreo | alim}"
 ENV="${2:?env attendu : dev | int | hom | prd | rec}"
 CONF="${3:?chemin HDFS du fichier de configuration attendu (reo_ajust.conf, reo_myreo.conf ou reo_alim.conf)}"
 shift 3
@@ -67,7 +67,7 @@ case "$CHAIN" in
   myreo)
     CLASS="com.bsy.datalake.reo.job.MainDriverMyReo"
     DRIVER_MEM="2g"; DRIVER_CORES=1; EXEC_CORES=2; EXEC_MEM="2g"; PARALLELISM=4 ;;
-  covid)
+  alim)
     CLASS="com.bsy.datalake.reo.job.MainDriverReo"
     DRIVER_MEM="16g"; DRIVER_CORES=4; EXEC_CORES=4 ;;
   *) echo "Chaine inconnue : $CHAIN" >&2; exit 2 ;;
@@ -84,7 +84,7 @@ if command -v unzip >/dev/null 2>&1; then
 fi
 
 VAULT_OPTS=""
-if [ "$CHAIN" = "covid" ]; then
+if [ "$CHAIN" = "alim" ]; then
   VAULT_CONF="${REO_VAULT_CONF:-$BASE_DIR/conf/vault.conf}"
   if [ -f "$VAULT_CONF" ]; then
     VAULT_OPTS="--files $VAULT_CONF --conf spark.yarn.appMasterEnv.vault_config_file=$(basename "$VAULT_CONF")"

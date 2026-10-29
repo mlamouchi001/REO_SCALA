@@ -4,7 +4,7 @@ import com.bsy.datalake.reo.SparkTestBase
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/** Toutes les requetes de ViewsAjustReo, ViewsMyReo et ViewsCovidReo doivent etre syntaxiquement valides (parsing seul). */
+/** Toutes les requetes de ViewsAjustReo, ViewsMyReo et ViewsAlimReo doivent etre syntaxiquement valides (parsing seul). */
 class ViewsSqlSyntaxSpec extends AnyFlatSpec with Matchers with SparkTestBase {
 
   private def queriesOf(views: AnyRef): Seq[(String, String)] =
@@ -15,11 +15,11 @@ class ViewsSqlSyntaxSpec extends AnyFlatSpec with Matchers with SparkTestBase {
 
   private val ajust = queriesOf(ViewsAjustReo)
   private val myreo = queriesOf(ViewsMyReo)
-  private val covid = queriesOf(ViewsCovidReo)
+  private val alim = queriesOf(ViewsAlimReo)
 
   /** Requetes construites par parametre (ventilations J1 et J2, table NRG -> PCI, depot AJUST). */
-  private val covidBuilt: Seq[(String, String)] = {
-    import ViewsCovidReo._
+  private val alimBuilt: Seq[(String, String)] = {
+    import ViewsAlimReo._
     Seq(VentilLayout.MYREO, VentilLayout.AJUST).flatMap { l =>
       Seq(
         s"${l.prefix} mtd" -> ventilMtdSql(l),
@@ -36,7 +36,7 @@ class ViewsSqlSyntaxSpec extends AnyFlatSpec with Matchers with SparkTestBase {
       "depot" -> depotCopySql(Seq("ajustment_id", "perimeter")))
   }
 
-  behavior of "ViewsAjustReo, ViewsMyReo et ViewsCovidReo"
+  behavior of "ViewsAjustReo, ViewsMyReo et ViewsAlimReo"
 
   it should "exposer les requetes de chaque job Talend porte" in {
     ajust.map(_._1) should contain allOf(
@@ -44,7 +44,7 @@ class ViewsSqlSyntaxSpec extends AnyFlatSpec with Matchers with SparkTestBase {
       "gts_skipper_enrich_sql", "uv_super_phase_code_sql", "uv_super_phase_check_sql", "uv_dc_conso_sql")
     myreo.map(_._1) should contain allOf(
       "myreo_delta_sql", "myreo_active_types_sql", "myreo_rd_to_sv_sql", "myreo_amount_check_sql")
-    covid.map(_._1) should contain allOf(
+    alim.map(_._1) should contain allOf(
       "nrg_out1_sql", "nrg_equal_sql", "nrg_count_filter_sql", "nrg_min_pci_sql", "nrg_diff_candidates_sql",
       "nrg_diff_sql", "reomaker_active_count_sql", "reomaker_to_sv_sql", "myreo_ytd_sql", "ajust_ytd_sql",
       "conso_mp_sql", "conso_to_agg_sql", "conso_year_filter_sql", "gts_skipper_enrich_sql",
@@ -54,7 +54,7 @@ class ViewsSqlSyntaxSpec extends AnyFlatSpec with Matchers with SparkTestBase {
 
   private def named(prefix: String, queries: Seq[(String, String)]) = queries.map { case (n, q) => s"$prefix.$n" -> q }
 
-  (named("ViewsAjustReo", ajust) ++ named("ViewsMyReo", myreo) ++ named("ViewsCovidReo", covid ++ covidBuilt))
+  (named("ViewsAjustReo", ajust) ++ named("ViewsMyReo", myreo) ++ named("ViewsAlimReo", alim ++ alimBuilt))
     .foreach { case (name, sql) =>
       it should s"parser la requete '$name'" in {
         noException should be thrownBy spark.sessionState.sqlParser.parsePlan(sql)

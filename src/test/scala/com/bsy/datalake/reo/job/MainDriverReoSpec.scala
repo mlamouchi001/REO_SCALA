@@ -3,7 +3,7 @@ package com.bsy.datalake.reo.job
 import com.bsy.datalake.reo.SparkTestBase
 import com.bsy.datalake.reo.TestData._
 import com.bsy.datalake.reo.common.StepResult
-import com.bsy.datalake.reo.utility.{CustomSchemaCovidReo, MssqlGateway, ProcResult, ReoConf}
+import com.bsy.datalake.reo.utility.{CustomSchemaAlimReo, MssqlGateway, ProcResult, ReoConf}
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Row, SaveMode, SparkSession}
@@ -39,14 +39,14 @@ class FakeMssqlGateway(ajustments: () => DataFrame, procResults: Map[String, Pro
 }
 
 /**
- * Test de bout en bout de la chaine COVID sur le systeme de fichiers local, avec la configuration de reference
+ * Test de bout en bout de la chaine ALIM sur le systeme de fichiers local, avec la configuration de reference
  * conf/reo_alim.conf (seules les racines de l'environnement de test "tu" sont ajoutees) et une base SQL Server
  * simulee.
  */
 class MainDriverReoSpec extends AnyFlatSpec with Matchers with SparkTestBase with BeforeAndAfterAll
-  with CustomSchemaCovidReo {
+  with CustomSchemaAlimReo {
 
-  private val root: File = tempDir("covid_e2e").toFile
+  private val root: File = tempDir("alim_e2e").toFile
   private def f(rel: String): File = new File(root, rel)
   private def dq(file: File): String = "\"" + file.getPath + "\""
   private val roots = Seq("sv_reo", "erk_sv", "erk_sv_reo", "bv_reo", "bv", "wp_reo", "wp", "uv_reo", "ere_uv", "erk_uv",
@@ -175,7 +175,7 @@ class MainDriverReoSpec extends AnyFlatSpec with Matchers with SparkTestBase wit
     lines("sv_reo/my_reo/Extract_Ajus_Outil_REO_pour_BSY_REO.csv") shouldBe
       Seq("RE;202604;YTD;EUROHIST;T_ACT;REOMAKER;E1;CA1;IND1;100.0")
     f("wp_reo/my_reo/aju/ventil").list().filter(_.endsWith(".csv")).toSet shouldBe
-      com.bsy.datalake.reo.mapping.ViewsCovidReo.VENTIL_FILES.map(_ + ".csv").toSet
+      com.bsy.datalake.reo.mapping.ViewsAlimReo.VENTIL_FILES.map(_ + ".csv").toSet
     val myreoAgg = lines("wp_reo/my_reo/aju/agg/aju_agg.csv")
     myreoAgg should have length 12
     myreoAgg should contain("RE;202605;MTD;EUROCST;T_ACT;REOMAKER;E1;CA1;IND1;-100.0000000000000000")

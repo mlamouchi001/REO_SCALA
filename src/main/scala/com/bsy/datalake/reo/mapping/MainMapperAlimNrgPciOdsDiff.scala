@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory
  *                                -> to_diff9 -> tSqlRow_6 -> tSqlRow_5 -> ods/mp_nrg_pci/diff/diff9  (sinon)
  * Comptes differents du code sous-NRG, commencant (diff) ou non (diff9) par 9.
  */
-class MainMapperCovidNrgPciOdsDiff(sparkSession: SparkSession,
+class MainMapperAlimNrgPciOdsDiff(sparkSession: SparkSession,
                                    rubriqueDf: DataFrame,
                                    pciDf: DataFrame,
                                    startsWith9: Boolean,
@@ -22,7 +22,7 @@ class MainMapperCovidNrgPciOdsDiff(sparkSession: SparkSession,
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def enrichDataFrame: DataFrame = {
-    log.info(s"**** MainMapperCovidNrgPciOdsDiff (comptes en 9 : $startsWith9) start ****")
+    log.info(s"**** MainMapperAlimNrgPciOdsDiff (comptes en 9 : $startsWith9) start ****")
 
     rubriqueDf.createOrReplaceTempView(V_NRG_RUBRIQUE)
     pciDf.createOrReplaceTempView(V_NRG_PCI)
@@ -31,7 +31,7 @@ class MainMapperCovidNrgPciOdsDiff(sparkSession: SparkSession,
     sparkSession.sql(nrg_count_filter_sql).createOrReplaceTempView(V_NRG_DIFF)
     val dfFinal = sparkSession.sql(nrg_min_pci_sql)
 
-    log.info("**** MainMapperCovidNrgPciOdsDiff end ****")
+    log.info("**** MainMapperAlimNrgPciOdsDiff end ****")
     dfFinal
   }
 }

@@ -1,8 +1,8 @@
 package com.bsy.datalake.reo.job
 
 import com.bsy.datalake.reo.common._
-import com.bsy.datalake.reo.mapping.MainMapperCovidVentilation
-import com.bsy.datalake.reo.utility.CovidReoConstants._
+import com.bsy.datalake.reo.mapping.MainMapperAlimVentilation
+import com.bsy.datalake.reo.utility.AlimReoConstants._
 import com.bsy.datalake.reo.utility.ReoConstants.CONF_ROOT
 import com.bsy.datalake.reo.utility._
 import com.typesafe.config.ConfigFactory
@@ -13,8 +13,8 @@ import org.slf4j.LoggerFactory
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * Point d'entree de la chaine COVID : remplace en UNE application Spark l'orchestrateur Talend
- * LUD_FLOW_AJUSTEMENT_REO_COVID et ses 19 jobs enfants (7 jobs Spark, 12 jobs Standard dont 7 en echange avec
+ * Point d'entree de la chaine ALIM : remplace en UNE application Spark l'orchestrateur Talend
+ * d'alimentation REO et ses 19 jobs enfants (7 jobs Spark, 12 jobs Standard dont 7 en echange avec
  * SQL Server).
  *
  * Etapes (interrupteurs dfin.bsy.reo.<etape>_trt, toutes actives par defaut), dans l'ordre d'execution :
@@ -67,7 +67,7 @@ object MainDriverReo {
       run(new ReoConf(config, env))
     } catch {
       case ex: Exception =>
-        logger.error("Exception dans le job REO COVID", ex)
+        logger.error("Exception dans le job REO ALIM", ex)
         throw ex
     } finally {
       if (reader != null) {
@@ -80,7 +80,7 @@ object MainDriverReo {
       catch {
         case closeEx: Exception => logger.warn("Fermeture de la SparkSession impossible", closeEx)
       }
-      logger.info("Fin du job REO COVID")
+      logger.info("Fin du job REO ALIM")
     }
   }
 
@@ -136,8 +136,8 @@ object MainDriverReo {
     val config = conf.config
     val steps = new StepRunner(APPLICATION_NAME)
     val writer = new DataWriter(conf)
-    val fetchSource = new FetchSourceCovidReo(spark, conf)
-    val runner = new CovidReoRunner(fetchSource)
+    val fetchSource = new FetchSourceAlimReo(spark, conf)
+    val runner = new AlimReoRunner(fetchSource)
     val cached = ArrayBuffer.empty[DataFrame]
     lazy val mssql: MssqlGateway = mssqlFactory(conf)
     val separator = ";"
@@ -328,7 +328,7 @@ object MainDriverReo {
    * Ecrit les 14 fichiers de ventilation (dfin.bsy.reo.write_ventil_files, tracabilite) puis l'agregat.
    * L'agregat est calcule sur les branches en memoire : un fichier residuel du dossier ventil n'est pas somme.
    */
-  private def writeVentilation(ctx: Context, ventil: MainMapperCovidVentilation, folder: String, aggTable: String): String =
+  private def writeVentilation(ctx: Context, ventil: MainMapperAlimVentilation, folder: String, aggTable: String): String =
     try {
       val dir = ctx.conf.outputPath(folder)
       if (ctx.conf.boolean(s"$CONF_ROOT.write_ventil_files", default = true)) {

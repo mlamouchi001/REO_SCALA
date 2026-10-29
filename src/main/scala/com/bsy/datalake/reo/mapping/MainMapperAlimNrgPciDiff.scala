@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory
  *   tFileInputDelimited_7 (sous-dossiers de ods/mp_nrg_pci/diff) + tFileInputDelimited_3 (equal) -> tSqlRow_4 -> tSqlRow_2
  *   -> tFileOutputDelimited_4 (mp_nrg_pci/diff, lu par la conso MyREO).
  */
-class MainMapperCovidNrgPciDiff(sparkSession: SparkSession,
+class MainMapperAlimNrgPciDiff(sparkSession: SparkSession,
                                 odsAllDf: DataFrame,
                                 equalDf: DataFrame,
                                 config: Config)
@@ -20,14 +20,14 @@ class MainMapperCovidNrgPciDiff(sparkSession: SparkSession,
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def enrichDataFrame: DataFrame = {
-    log.info("**** MainMapperCovidNrgPciDiff start ****")
+    log.info("**** MainMapperAlimNrgPciDiff start ****")
 
     odsAllDf.createOrReplaceTempView(V_NRG_ALL)
     equalDf.createOrReplaceTempView(V_NRG_EQUAL)
     sparkSession.sql(nrg_diff_candidates_sql).createOrReplaceTempView(V_NRG_ITERATION)
     val dfFinal = sparkSession.sql(nrg_diff_sql)
 
-    log.info("**** MainMapperCovidNrgPciDiff end ****")
+    log.info("**** MainMapperAlimNrgPciDiff end ****")
     dfFinal
   }
 }

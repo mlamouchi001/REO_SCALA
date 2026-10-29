@@ -1,5 +1,5 @@
 // =====================================================================================================
-// Pipeline SG (dev) de BSY_REO (chaines AJUST, MYREO et COVID) : repris du template FDA_TEMPLATE_PROJECT_SCALA (librairie
+// Pipeline SG (dev) de BSY_REO (chaines AJUST, MYREO et ALIM) : repris du template FDA_TEMPLATE_PROJECT_SCALA (librairie
 // partagee baseHadoopTemplate / ansibleTowerDeploy), avec deux corrections :
 //   - les resultats de tests publies sont les rapports JUnit de ScalaTest (le template publiait
 //     scoverage.xml comme resultat JUnit) ;

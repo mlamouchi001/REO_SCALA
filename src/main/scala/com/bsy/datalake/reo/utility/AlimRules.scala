@@ -5,21 +5,21 @@ import org.apache.spark.sql.SparkSession
 import java.math.{MathContext, RoundingMode, BigDecimal => JBigDecimal}
 
 /**
- * Regles Java des jobs Talend de la chaine COVID non exprimables a l'identique en Spark SQL, exposees en UDF
- * pour les requetes de ViewsCovidReo.
+ * Regles Java des jobs Talend de la chaine ALIM non exprimables a l'identique en Spark SQL, exposees en UDF
+ * pour les requetes de ViewsAlimReo.
  */
-object CovidRules {
+object AlimRules {
 
   /** Montant * facteur en MathContext.DECIMAL64 (PostProcessor_tMap_1_MTD : ventilation YTD -> MTD). */
-  val UDF_MUL64 = "covid_mul64"
+  val UDF_MUL64 = "alim_mul64"
   /** Montant * taux en MathContext.DECIMAL32 (PostProcessor des derivations ETP GD1 -> GD2). */
-  val UDF_MUL32 = "covid_mul32"
+  val UDF_MUL32 = "alim_mul32"
   /** Integer.parseInt strict (filtre FY du tMap_4 de LUD_REO_AJUST_CALCULATION_SPARK). */
-  val UDF_PARSE_INT = "covid_parse_int"
+  val UDF_PARSE_INT = "alim_parse_int"
   /** ParserUtils.parseTo_Double strict, vide -> null (montant de MYREO_REO_RD_TO_SV). */
-  val UDF_PARSE_DOUBLE = "covid_parse_double"
-  /** Vrai si covid_parse_double accepte la valeur (controle avant ecriture). */
-  val UDF_IS_DOUBLE = "covid_is_double"
+  val UDF_PARSE_DOUBLE = "alim_parse_double"
+  /** Vrai si alim_parse_double accepte la valeur (controle avant ecriture). */
+  val UDF_IS_DOUBLE = "alim_is_double"
 
   /** Echelle des montants ecrits par les jobs Talend (BigDecimal 32,16). */
   private val AMOUNT_SCALE = 16

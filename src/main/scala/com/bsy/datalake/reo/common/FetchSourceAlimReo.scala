@@ -1,15 +1,15 @@
 package com.bsy.datalake.reo.common
 
 import com.bsy.datalake.reo.utility.AjustReoConstants._
-import com.bsy.datalake.reo.utility.CovidReoConstants._
+import com.bsy.datalake.reo.utility.AlimReoConstants._
 import com.bsy.datalake.reo.utility.ReoConstants.REF_DATA_TYPE_SV
-import com.bsy.datalake.reo.utility.{CustomSchemaCovidReo, ReoConf, Utils}
+import com.bsy.datalake.reo.utility.{CustomSchemaAlimReo, ReoConf, Utils}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
 
 /**
- * Annuaire des sources de la chaine COVID (meme role que FetchSourceAjustReo) : une lazy val par table, lue au
+ * Annuaire des sources de la chaine ALIM (meme role que FetchSourceAjustReo) : une lazy val par table, lue au
  * premier acces, schema impose. Les fichiers produits par une etape et relus par la suivante (table NRG -> PCI,
  * fichier SV, agregats, fait UV, extraction SQL Server) sont donc lus apres leur ecriture dans le run.
  *
@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory
  * Les lookups GTS sont lus avec TRIMALL par l'enrichissement MyREO, sans TRIMALL par l'export SQL Server (memes
  * fichiers, composants differents) : `raw` donne la variante sans TRIMALL.
  */
-class FetchSourceCovidReo(sparkSession: SparkSession, conf: ReoConf) extends CustomSchemaCovidReo {
+class FetchSourceAlimReo(sparkSession: SparkSession, conf: ReoConf) extends CustomSchemaAlimReo {
 
   private val log = LoggerFactory.getLogger(this.getClass)
 
@@ -43,7 +43,7 @@ class FetchSourceCovidReo(sparkSession: SparkSession, conf: ReoConf) extends Cus
       headerLines = if (conf.tableBoolean(table, "input_header", default = defaultHeaderLines > 0)) 1 else 0)
 
   // --- Table NRG -> PCI ---
-  private lazy val rubrique_tbl: DataFrame = delimited(COVID_RUBRIQUE, schemaRubrique)
+  private lazy val rubrique_tbl: DataFrame = delimited(ALIM_RUBRIQUE, schemaRubrique)
   private lazy val lk_pci_tbl: DataFrame = delimited(LK_PCI, schemaLkPci)
   private lazy val mp_equal_tbl: DataFrame = delimited(MP_NRG_PCI_EQUAL, schemaMpEqual)
   private lazy val mp_diff_tbl: DataFrame = delimited(MP_NRG_PCI_DIFF, schemaMpDiff)
@@ -93,8 +93,8 @@ class FetchSourceCovidReo(sparkSession: SparkSession, conf: ReoConf) extends Cus
   private lazy val dim_activite_tbl: DataFrame = delimited(DIM_ACTIVITE, schemaDimActivite)
   private lazy val dim_pyramide_budg_tbl: DataFrame = delimited(DIM_PYRAMIDE_BUDG, schemaDimPyramideBudg)
   private lazy val dim_cumul_tbl: DataFrame = delimited(DIM_CUMUL, schemaDimCumul)
-  private lazy val dim_supervision_tbl: DataFrame = delimited(COVID_DIM_SUPERVISION, schemaDimSupervision)
-  private lazy val dim_conversion_tbl: DataFrame = delimited(COVID_DIM_CONVERSION, schemaDimConversion)
+  private lazy val dim_supervision_tbl: DataFrame = delimited(ALIM_DIM_SUPERVISION, schemaDimSupervision)
+  private lazy val dim_conversion_tbl: DataFrame = delimited(ALIM_DIM_CONVERSION, schemaDimConversion)
   private lazy val dim_data_type_tbl: DataFrame = delimited(DIM_DATA_TYPE, schemaDimDataType)
   private lazy val dim_data_source_tbl: DataFrame = delimited(DIM_DATA_SOURCE, schemaDimDataSource)
   private lazy val dim_gts_skipper_tbl: DataFrame = delimited(DIM_GTS_SKIPPER, schemaDimGtsSkipper)
@@ -108,7 +108,7 @@ class FetchSourceCovidReo(sparkSession: SparkSession, conf: ReoConf) extends Cus
   private lazy val myreo_dc_conso_text: DataFrame = lines(MYREO_DC_CONSO_UV, schemaDcConsoText, 0)
 
   def getSourceDf(input: String): DataFrame = input.toUpperCase match {
-    case COVID_RUBRIQUE => rubrique_tbl
+    case ALIM_RUBRIQUE => rubrique_tbl
     case LK_PCI => lk_pci_tbl
     case MP_NRG_PCI_EQUAL => mp_equal_tbl
     case MP_NRG_PCI_DIFF => mp_diff_tbl
@@ -138,8 +138,8 @@ class FetchSourceCovidReo(sparkSession: SparkSession, conf: ReoConf) extends Cus
     case DIM_ACTIVITE => dim_activite_tbl
     case DIM_PYRAMIDE_BUDG => dim_pyramide_budg_tbl
     case DIM_CUMUL => dim_cumul_tbl
-    case COVID_DIM_SUPERVISION => dim_supervision_tbl
-    case COVID_DIM_CONVERSION => dim_conversion_tbl
+    case ALIM_DIM_SUPERVISION => dim_supervision_tbl
+    case ALIM_DIM_CONVERSION => dim_conversion_tbl
     case DIM_DATA_TYPE => dim_data_type_tbl
     case DIM_DATA_SOURCE => dim_data_source_tbl
     case DIM_GTS_SKIPPER => dim_gts_skipper_tbl

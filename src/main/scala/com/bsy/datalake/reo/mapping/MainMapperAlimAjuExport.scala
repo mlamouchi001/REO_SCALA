@@ -1,7 +1,7 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory
  *   -> tMap_3 (super-phase) -> tMap_5 (classification) -> tMSSqlOutput_3 ([dbo].[hdfs_import_ajustment_reo]).
  * Le DataFrame rendu a les 23 colonnes de l'INSERT Talend, Amount en double et input_date en timestamp.
  */
-class MainMapperCovidAjuExport(sparkSession: SparkSession,
+class MainMapperAlimAjuExport(sparkSession: SparkSession,
                                ajuAggDf: DataFrame,
                                lkPciDf: DataFrame,
                                lkGtsTypeCaDf: DataFrame,
@@ -24,7 +24,7 @@ class MainMapperCovidAjuExport(sparkSession: SparkSession,
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def enrichDataFrame: DataFrame = {
-    log.info("**** MainMapperCovidAjuExport start ****")
+    log.info("**** MainMapperAlimAjuExport start ****")
 
     ajuAggDf.createOrReplaceTempView(V_EXP_AJU_AGG)
     lkPciDf.createOrReplaceTempView(V_EXP_LK_PCI)
@@ -40,7 +40,7 @@ class MainMapperCovidAjuExport(sparkSession: SparkSession,
     }
 
     val dfFinal = sparkSession.sql(export_aju_sql)
-    log.info("**** MainMapperCovidAjuExport end ****")
+    log.info("**** MainMapperAlimAjuExport end ****")
     dfFinal
   }
 }

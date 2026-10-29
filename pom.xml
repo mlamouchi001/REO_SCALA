@@ -86,7 +86,7 @@
             <artifactId>config</artifactId>
             <version>1.3.2</version>
         </dependency>
-        <!-- Pilote SQL Server de la chaine COVID (remplace jTDS des jobs Talend), embarque dans le fat jar -->
+        <!-- Pilote SQL Server de la chaine ALIM (remplace jTDS des jobs Talend), embarque dans le fat jar -->
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>

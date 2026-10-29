@@ -1,20 +1,20 @@
 package com.bsy.datalake.reo.common
 
-import com.bsy.datalake.reo.mapping.{MainMapperCovidVentilation, VentilParams}
+import com.bsy.datalake.reo.mapping.{MainMapperAlimVentilation, VentilParams}
 import com.bsy.datalake.reo.utility.AjustReoConstants._
-import com.bsy.datalake.reo.utility.CovidReoConstants._
+import com.bsy.datalake.reo.utility.AlimReoConstants._
 import com.bsy.datalake.reo.utility.DataTypePlan
 import com.bsy.datalake.reo.utility.ReoConstants.REF_DATA_TYPE_SV
 import com.typesafe.config.Config
 import org.apache.spark.sql.DataFrame
 
 /**
- * Contrat du runner COVID (meme role que AbstractPrimaryAjustReo) : sources en lazy val, lues au premier acces,
- * et un traitement par job Talend de LUD_FLOW_AJUSTEMENT_REO_COVID.
+ * Contrat du runner ALIM (meme role que AbstractPrimaryAjustReo) : sources en lazy val, lues au premier acces,
+ * et un traitement par job Talend de l'orchestrateur Talend d'alimentation REO.
  */
-abstract class AbstractPrimaryCovidReo(fetchSource: FetchSourceCovidReo) {
+abstract class AbstractPrimaryAlimReo(fetchSource: FetchSourceAlimReo) {
 
-  private[common] lazy val rubrique_dt: DataFrame = fetchSource.getSourceDf(COVID_RUBRIQUE)
+  private[common] lazy val rubrique_dt: DataFrame = fetchSource.getSourceDf(ALIM_RUBRIQUE)
   private[common] lazy val lk_pci_dt: DataFrame = fetchSource.getSourceDf(LK_PCI)
   private[common] lazy val mp_equal_dt: DataFrame = fetchSource.getSourceDf(MP_NRG_PCI_EQUAL)
   private[common] lazy val mp_diff_dt: DataFrame = fetchSource.getSourceDf(MP_NRG_PCI_DIFF)
@@ -49,8 +49,8 @@ abstract class AbstractPrimaryCovidReo(fetchSource: FetchSourceCovidReo) {
     activite = fetchSource.getSourceDf(DIM_ACTIVITE),
     pyramideBudg = fetchSource.getSourceDf(DIM_PYRAMIDE_BUDG),
     cumul = fetchSource.getSourceDf(DIM_CUMUL),
-    supervision = fetchSource.getSourceDf(COVID_DIM_SUPERVISION),
-    conversion = fetchSource.getSourceDf(COVID_DIM_CONVERSION),
+    supervision = fetchSource.getSourceDf(ALIM_DIM_SUPERVISION),
+    conversion = fetchSource.getSourceDf(ALIM_DIM_CONVERSION),
     dataType = fetchSource.getSourceDf(DIM_DATA_TYPE),
     dataSource = fetchSource.getSourceDf(DIM_DATA_SOURCE),
     gtsSkipper = fetchSource.getSourceDf(DIM_GTS_SKIPPER),
@@ -73,7 +73,7 @@ abstract class AbstractPrimaryCovidReo(fetchSource: FetchSourceCovidReo) {
   def runMapperReomakerToSv(config: Config): DataFrame
 
   /** LUD_AJUST_REO_CALCULATION_SPARK (fichier SV REOMAKER) ou LUD_REO_AJUST_CALCULATION_SPARK (aju.csv). */
-  def runMapperVentilation(config: Config, myReo: Boolean): MainMapperCovidVentilation
+  def runMapperVentilation(config: Config, myReo: Boolean): MainMapperAlimVentilation
 
   /** MYREO_ORCHESTRATION_DTYPE tMap_1 : types actifs et archives. */
   def runDataTypePlan(): DataTypePlan

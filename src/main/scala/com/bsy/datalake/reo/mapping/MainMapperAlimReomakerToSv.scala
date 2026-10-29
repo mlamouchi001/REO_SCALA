@@ -1,8 +1,8 @@
 package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.common.AbstractMapperProvider
-import com.bsy.datalake.reo.mapping.ViewsCovidReo._
-import com.bsy.datalake.reo.utility.{CovidRules, DataQuality}
+import com.bsy.datalake.reo.mapping.ViewsAlimReo._
+import com.bsy.datalake.reo.utility.{AlimRules, DataQuality}
 import com.typesafe.config.Config
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.slf4j.LoggerFactory
@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory
  * Talend ouvrait le fichier SV en ecrasement avant de lire l'extraction : un montant non numerique arretait le job
  * en laissant un SV vide. Ici le controle est fait avant toute ecriture, le SV precedent reste en place.
  */
-class MainMapperCovidReomakerToSv(sparkSession: SparkSession,
+class MainMapperAlimReomakerToSv(sparkSession: SparkSession,
                                   reomakerDf: DataFrame,
                                   refDataTypeDf: DataFrame,
                                   config: Config)
@@ -24,9 +24,9 @@ class MainMapperCovidReomakerToSv(sparkSession: SparkSession,
   private val log = LoggerFactory.getLogger(this.getClass)
 
   override def enrichDataFrame: DataFrame = {
-    log.info("**** MainMapperCovidReomakerToSv start ****")
+    log.info("**** MainMapperAlimReomakerToSv start ****")
 
-    CovidRules.registerUdfs(sparkSession)
+    AlimRules.registerUdfs(sparkSession)
     reomakerDf.createOrReplaceTempView(V_RMK_INPUT)
     refDataTypeDf.createOrReplaceTempView(V_RMK_REF_DATA_TYPE)
 
@@ -44,7 +44,7 @@ class MainMapperCovidReomakerToSv(sparkSession: SparkSession,
     sparkSession.sql(reomaker_active_types_sql).createOrReplaceTempView(V_RMK_ACTIVE_TYPES)
     val dfFinal = sparkSession.sql(reomaker_to_sv_sql)
 
-    log.info("**** MainMapperCovidReomakerToSv end ****")
+    log.info("**** MainMapperAlimReomakerToSv end ****")
     dfFinal
   }
 }

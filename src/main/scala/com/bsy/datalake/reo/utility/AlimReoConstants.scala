@@ -1,21 +1,21 @@
 package com.bsy.datalake.reo.utility
 
 /**
- * Constantes de la chaine COVID (ex orchestrateur Talend LUD_FLOW_AJUSTEMENT_REO_COVID et ses 19 jobs enfants).
+ * Constantes de la chaine ALIM (ex orchestrateur Talend d'alimentation REO et ses 19 jobs enfants).
  *
  * Chaque constante "table" correspond a un bloc de configuration `dfin.bsy.<TABLE>` (cf. conf/reo_alim.conf).
  * Les tables de meme nom que la chaine AJUST (YEAR_MAPPING, LK_*, DIM_*) designent les memes fichiers, avec
  * les memes options de lecture.
  */
-object CovidReoConstants {
+object AlimReoConstants {
 
-  val APPLICATION_NAME = "BSY_REO_AJUSTEMENT_COVID"
+  val APPLICATION_NAME = "BSY_REO_AJUSTEMENT_ALIM"
 
   // ------------------------------------------------------------------------------------------------
   // Table NRG -> PCI (LUD_AJUST_REO_NRG_PCI_MAP_TO_SV_SPARK, recalculee aussi par LUD_AJUST_REO_CONSO_TO_BV_SPARK)
   // ------------------------------------------------------------------------------------------------
   /** Pyramide des indicateurs ERK UV : rubrique/rubrique.csv (44 colonnes). */
-  val COVID_RUBRIQUE = "COVID_RUBRIQUE"
+  val ALIM_RUBRIQUE = "ALIM_RUBRIQUE"
   /** Sous-NRG = numero de compte : <sv_reo>/erk_a2832/ajust/mp_nrg_pci/equal (dossier CSV). */
   val MP_NRG_PCI_EQUAL = "MP_NRG_PCI_EQUAL"
   /** Sous-NRG -> compte hors equal : <sv_reo>/erk_a2832/ajust/mp_nrg_pci/diff (dossier CSV). */
@@ -60,8 +60,8 @@ object CovidReoConstants {
   /** Fait UV MyREO : <uv_reo>/dc_conso/my_reo/conso_reo.csv (fichier unique), exporte vers dc_conso_delta. */
   val MYREO_DC_CONSO_UV = "MYREO_DC_CONSO_UV"
   /** Referentiels UV propres au fait MyREO : fichiers supervision.csv et conversion.csv (dossiers chez AJUST). */
-  val COVID_DIM_SUPERVISION = "COVID_DIM_SUPERVISION"
-  val COVID_DIM_CONVERSION = "COVID_DIM_CONVERSION"
+  val ALIM_DIM_SUPERVISION = "ALIM_DIM_SUPERVISION"
+  val ALIM_DIM_CONVERSION = "ALIM_DIM_CONVERSION"
 
   // ------------------------------------------------------------------------------------------------
   // Bloc ajustements SQL Server

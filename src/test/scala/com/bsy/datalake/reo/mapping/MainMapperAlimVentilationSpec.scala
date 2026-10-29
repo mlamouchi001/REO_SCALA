@@ -2,7 +2,7 @@ package com.bsy.datalake.reo.mapping
 
 import com.bsy.datalake.reo.SparkTestBase
 import com.bsy.datalake.reo.TestData.df
-import com.bsy.datalake.reo.utility.CustomSchemaCovidReo
+import com.bsy.datalake.reo.utility.CustomSchemaAlimReo
 import com.typesafe.config.ConfigFactory
 import org.apache.spark.SparkException
 import org.apache.spark.sql.{DataFrame, Row}
@@ -13,7 +13,7 @@ import org.scalatest.matchers.should.Matchers
  * Ventilations J1 (LUD_AJUST_REO_CALCULATION_SPARK) et J2 (LUD_REO_AJUST_CALCULATION_SPARK) sur un jeu de
  * parametres reduit : m_mtd +1 sur le mois, -1 sur le mois suivant ; une seule annee (A0 = 2026, et 2018 pour J2).
  */
-class MainMapperCovidVentilationSpec extends AnyFlatSpec with Matchers with SparkTestBase with CustomSchemaCovidReo {
+class MainMapperAlimVentilationSpec extends AnyFlatSpec with Matchers with SparkTestBase with CustomSchemaAlimReo {
 
   private val config = ConfigFactory.parseString("dfin.bsy.reo.dq_checks = true")
 
@@ -45,7 +45,7 @@ class MainMapperCovidVentilationSpec extends AnyFlatSpec with Matchers with Spar
 
   private def amount(r: Row, column: String): String = r.getAs[java.math.BigDecimal](column).toPlainString
 
-  behavior of "MainMapperCovidVentilation (J1, ajustements MyREO)"
+  behavior of "MainMapperAlimVentilation (J1, ajustements MyREO)"
 
   private def myReoInput: DataFrame = {
     def line(indicator: String, amount: String) = Map("Phase" -> "RE", "Period" -> "202604", "Type_Cumul" -> "YTD",
@@ -55,9 +55,9 @@ class MainMapperCovidVentilationSpec extends AnyFlatSpec with Matchers with Spar
   }
 
   it should "produire les 14 branches et l'agregat non nul, par conversion d'origine, LMLOCAL et EUROCST" in {
-    val mapper = new MainMapperCovidVentilation(spark, VentilLayout.MYREO, myReoInput, None, params, config)
+    val mapper = new MainMapperAlimVentilation(spark, VentilLayout.MYREO, myReoInput, None, params, config)
     try {
-      mapper.branches.map(_._1) shouldBe ViewsCovidReo.VENTIL_FILES
+      mapper.branches.map(_._1) shouldBe ViewsAlimReo.VENTIL_FILES
       val branch = mapper.branches.toMap
       branch("ytd").count() shouldBe 6
       // MTD : facteur +1 sur 04, -1 sur 05 (cible trimmee) ; effectifs exclus
@@ -89,7 +89,7 @@ class MainMapperCovidVentilationSpec extends AnyFlatSpec with Matchers with Spar
 
   it should "echouer comme Talend sur un montant vide a multiplier" in {
     val input = myReoInput.union(df(spark, schemaAjuReo, Map("Period" -> "202604", "Indicateurs" -> "IND2")))
-    val mapper = new MainMapperCovidVentilation(spark, VentilLayout.MYREO, input, None, params, config)
+    val mapper = new MainMapperAlimVentilation(spark, VentilLayout.MYREO, input, None, params, config)
     try {
       val e = intercept[SparkException](mapper.fetchMapping.collect())
       Iterator.iterate(e: Throwable)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" | ") should
@@ -97,7 +97,7 @@ class MainMapperCovidVentilationSpec extends AnyFlatSpec with Matchers with Spar
     } finally mapper.release()
   }
 
-  behavior of "MainMapperCovidVentilation (J2, ajustements SQL Server)"
+  behavior of "MainMapperAlimVentilation (J2, ajustements SQL Server)"
 
   private def ajustInput: DataFrame = {
     def aju(id: Int, periode: String, pci: String, eurohist: String, lmlocal: String) = Map(
@@ -118,7 +118,7 @@ class MainMapperCovidVentilationSpec extends AnyFlatSpec with Matchers with Spar
     Map("code_nrg" -> "N2", "code_sous_nrg" -> "S2", "Numero_compte" -> "P2", "indicator" -> "GD1"))
 
   it should "remplacer indicateur, NRG et sous-NRG par mp_nrg_pci/equal, appliquer le taux en FQM et filtrer les FY" in {
-    val mapper = new MainMapperCovidVentilation(spark, VentilLayout.AJUST, ajustInput, Some(mpEqual), params, config)
+    val mapper = new MainMapperAlimVentilation(spark, VentilLayout.AJUST, ajustInput, Some(mpEqual), params, config)
     try {
       val ytd = mapper.branches.toMap.apply("ytd").collect()
       ytd should have length 12
@@ -148,7 +148,7 @@ class MainMapperCovidVentilationSpec extends AnyFlatSpec with Matchers with Spar
 
   it should "exiger la table equal" in {
     an[IllegalArgumentException] should be thrownBy
-      new MainMapperCovidVentilation(spark, VentilLayout.AJUST, ajustInput, None, params, config).branches
+      new MainMapperAlimVentilation(spark, VentilLayout.AJUST, ajustInput, None, params, config).branches
   }
 
   "VentilLayout" should "refuser une disposition incoherente" in {
