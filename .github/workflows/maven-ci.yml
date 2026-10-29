@@ -1,0 +1,57 @@
+# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
+# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
+
+name: Scala CI with Jfrog
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        type: string
+        description: The branch name to deploy to
+env:
+  JFROG_CLI_RELEASES_REPO: setup-jfrog-cli-server/jfrog-releases
+
+concurrency:
+  group: '${{ github.workflow }}  ${{ github.event.inputs.environment }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
+
+jobs:
+  calculate-project-version:
+    uses: DTUTransverse/reusable-github-actions/.github/workflows/project-version-generator.yml@main
+    with:
+      is-snapshot: ${{ github.event.inputs.branch_name != 'main' || github.event.inputs.branch_name != 'master' }}
+      branch_name: ${{ github.event.inputs.branch_name }}
+  init-control-project:
+    uses: DTUTransverse/reusable-github-actions/.github/workflows/init-controls-project-scala.yml@main
+    needs: [ calculate-project-version ]
+    with:
+      skip-tests: true #false
+      is-snapshot: ${{ github.event.inputs.branch_name != 'main' || github.event.inputs.branch_name != 'master' }}
+      branch_name: ${{ github.event.inputs.branch_name }}
+    secrets:
+      jf-secret: ${{ secrets.JF_ACCESS_TOKEN }}
+  #  sonar-scan:
+  #    uses: DTUTransverse/reusable-github-actions/.github/workflows/sonar-scan.yml@main
+  #    needs: [ calculate-project-version, init-control-project ]
+  #    with:
+  #      project-version: ${{ needs.calculate-project-version.outputs.tag-version }}
+  #    secrets:
+  #      SONAR_SECRET: ${{ secrets.SONAR_SECRET }}
+  build-project:
+    uses: DTUTransverse/reusable-github-actions/.github/workflows/build-project-scala.yml@main
+    needs: [ calculate-project-version, init-control-project ]
+    # [ sonar-scan ]
+    with:
+      skip-tests: true #false
+      is-snapshot: ${{ github.event.inputs.branch_name != 'main' || github.event.inputs.branch_name != 'master' }}
+      branch_name: ${{ github.event.inputs.branch_name }}
+    secrets:
+      jf-secret: ${{ secrets.JF_ACCESS_TOKEN }}
+  create-github-tag:
+    uses: DTUTransverse/reusable-github-actions/.github/workflows/github-tag-creator.yml@main
+    needs: [ build-project,  calculate-project-version ] #sonar-scan,
+    if: ${{ github.event.inputs.branch_name == 'main' || github.event.inputs.branch_name == 'master' }}
+    with:
+      tag-version: ${{ needs.calculate-project-version.outputs.tag-version }}
