@@ -1,5 +1,12 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
+# CD du projet BSY_REO : deploiement depuis JFrog par le job template AWX, avec le fichier vault.conf
+# de la chaine covid (identifiants SQL Server lus dans Vault, cf. conf/vault.conf.template).
+# Les workflows reutilisables viennent du depot generique DTUTransverse/reusable-github-actions.
+#
+# Prerequis du depot :
+#   secrets   : AWX_PASSWORD, JF_ACCESS_TOKEN,
+#               VAULT_ROLE_ID / VAULT_SECRET_ID (AppRole commun), ou par environnement
+#               VAULT_ROLE_ID_<ENV> / VAULT_SECRET_ID_<ENV> (ex. VAULT_ROLE_ID_PRD), prioritaires ;
+#   variables : AWX_USER, JF_MVN_SNAPSHOTS, JF_MVN_RELEASES ; AWX_JOB_ID par environnement GitHub.
 
 name: Scala CD for Jfrog
 
@@ -16,7 +23,7 @@ on:
         description: The target environment to deploy to
       branch_name:
         type: string
-        description: The branch name to deploy to
+        description: "Branche a deployer (vide : la branche selectionnee ci-dessus)"
       app_version:
         type: string
         default: latest
@@ -28,39 +35,45 @@ on:
       deploy_config_file:
         type: choice
         options:
-          - Yes
-          - No
-        default: No
+          - "No"
+          - "Yes"
+        default: "No"
         description: Deploy the config files ?
+      deploy_vault_conf:
+        type: choice
+        options:
+          - "Yes"
+          - "No"
+        default: "Yes"
+        description: "Deposer vault.conf (identifiants AppRole issus des secrets du depot) ?"
       application_conf:
         type: string
         default: all
         description: "Application config file"
-    secrets:
-      awx_password:
-        required: true
-        description: "AWX Password."
-      jfrog_token_scribe:
-        required: true
-        description: "Jfrog secret token."
 
 env:
   JFROG_CLI_RELEASES_REPO: setup-jfrog-cli-server/jfrog-releases
 
-concurrency:
-  group: '${{ github.workflow }}  ${{ github.event.inputs.environment }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
-  cancel-in-progress: true
+permissions:
+  contents: read
 
+# Un seul deploiement a la fois par environnement, jamais interrompu en cours de route
+concurrency:
+  group: ${{ github.workflow }} @ ${{ inputs.environment }}
+  cancel-in-progress: false
 
 jobs:
   calculate-project-version:
     uses: DTUTransverse/reusable-github-actions/.github/workflows/get_project_infos.yml@main
     with:
-      is-snapshot: ${{ github.event.inputs.branch_name != 'main' && github.event.inputs.branch_name != 'master' }}
-      branch_name: ${{ github.event.inputs.branch_name }}
+      is-snapshot: ${{ !contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
+      branch_name: ${{ inputs.branch_name }}
+
   calcul_job_awx:
-    environment: ${{ github.event.inputs.environment }}
+    # Environnement GitHub : variable AWX_JOB_ID et regles de protection (validation avant prd)
+    environment: ${{ inputs.environment }}
     runs-on: [ self-hosted, linux ]
+    timeout-minutes: 10
     needs: [ calculate-project-version ]
     outputs:
       job-awx: ${{ steps.calcul_job_awx.outputs.job-awx }}
@@ -69,34 +82,50 @@ jobs:
     steps:
       - name: calcul_job_awx
         id: calcul_job_awx
+        shell: bash
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+          BRANCH: ${{ inputs.branch_name || github.ref_name }}
+          APP_VERSION: ${{ inputs.app_version }}
+          POM_VERSION: ${{ needs.calculate-project-version.outputs.version_prj }}
+          AWX_JOB_ID: ${{ vars.AWX_JOB_ID }}
+          AWX_USER: ${{ vars.AWX_USER }}
+          JF_MVN_SNAPSHOTS: ${{ vars.JF_MVN_SNAPSHOTS }}
+          JF_MVN_RELEASES: ${{ vars.JF_MVN_RELEASES }}
+          HAS_AWX_PASSWORD: ${{ secrets.AWX_PASSWORD != '' }}
+          HAS_JF_TOKEN: ${{ secrets.JF_ACCESS_TOKEN != '' }}
         run: |
-          echo "job-awx=${{ vars.AWX_JOB_ID }}" >> $GITHUB_OUTPUT
-          echo "job-awx=${{ vars.AWX_JOB_ID }}"
-          if [[ ${{ github.event.inputs.branch_name }} != 'main' && ${{ github.event.inputs.branch_name }} != 'master'  ]]; then
-            echo "repo_jfrog=${{ vars.JF_MVN_SNAPSHOTS }}" >> $GITHUB_OUTPUT
-          else
-            echo "repo_jfrog=${{ vars.JF_MVN_RELEASES }}" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          ko=0
+          [[ "$AWX_JOB_ID" =~ ^[0-9]+$ ]] || { echo "::error::Variable AWX_JOB_ID absente ou non numerique pour l'environnement $TARGET_ENV"; ko=1; }
+          [[ -n "$AWX_USER" ]] || { echo "::error::Variable AWX_USER absente"; ko=1; }
+          [[ "$HAS_AWX_PASSWORD" == "true" ]] || { echo "::error::Secret AWX_PASSWORD absent"; ko=1; }
+          [[ "$HAS_JF_TOKEN" == "true" ]] || { echo "::error::Secret JF_ACCESS_TOKEN absent"; ko=1; }
+          if [[ "$TARGET_ENV" == "prd" && "$BRANCH" != "main" && "$BRANCH" != "master" ]]; then
+            echo "::error::La production ne se deploie que depuis main / master (branche : $BRANCH)"
+            ko=1
           fi
-          if [[ ${{ github.event.inputs.app_version }} == 'latest' ]]; then
-            echo "project_version=${{ needs.calculate-project-version.outputs.version_prj }}" >> $GITHUB_OUTPUT
-          else
-            echo "project_version=${{ github.event.inputs.app_version }}" >> $GITHUB_OUTPUT
-          fi
-          if [[ -z "${{ secrets.AWX_PASSWORD }}" ]]; then
-            echo " Secret vice " 
-          else
-            echo "Secret non vide" 
-          fi
+          if [[ "$BRANCH" != "main" && "$BRANCH" != "master" ]]; then repo="$JF_MVN_SNAPSHOTS"; else repo="$JF_MVN_RELEASES"; fi
+          [[ -n "$repo" ]] || { echo "::error::Variable JF_MVN_SNAPSHOTS / JF_MVN_RELEASES absente"; ko=1; }
+          (( ko == 0 )) || exit 1
+          if [[ "$APP_VERSION" == "latest" ]]; then version="$POM_VERSION"; else version="$APP_VERSION"; fi
+          {
+            echo "job-awx=$AWX_JOB_ID"
+            echo "repo_jfrog=$repo"
+            echo "project_version=$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "Deploiement $version ($BRANCH) sur $TARGET_ENV, job template AWX $AWX_JOB_ID, depot $repo"
+
   deploy_awx:
     needs: [ calculate-project-version, calcul_job_awx ]
     uses: DTUTransverse/reusable-github-actions/.github/workflows/deploy_awx_jfrog.yml@main
     with:
-      is-snapshot: ${{ github.event.inputs.branch_name != 'main' && github.event.inputs.branch_name != 'master' }}
+      is-snapshot: ${{ !contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
       awx-user: ${{ vars.AWX_USER }}
       app_config: 'app/bsy_a2918/scala'
       app_version: ${{ needs.calcul_job_awx.outputs.project_version }}
-      application_conf: ${{ github.event.inputs.application_conf }}
-      env: ${{ github.event.inputs.environment}}
+      application_conf: ${{ inputs.application_conf }}
+      env: ${{ inputs.environment }}
       irt_trigram: 'bsy_a2918'
       path_source: 'scala'
       project_group_id: ${{ needs.calculate-project-version.outputs.groupId }}
@@ -105,9 +134,19 @@ jobs:
       project_version: ${{ needs.calcul_job_awx.outputs.project_version }}
       job-awx: ${{ needs.calcul_job_awx.outputs.job-awx }}
       repo_jfrog: ${{ needs.calcul_job_awx.outputs.repo_jfrog }}
-      jar_name: ${{ github.event.inputs.jar_name }}
-      deploy_config_file: ${{ github.event.inputs.deploy_config_file == 'true' }}
+      jar_name: ${{ inputs.jar_name }}
+      deploy_config_file: ${{ inputs.deploy_config_file == 'Yes' }}
       path_conf: '/files/'
+      # vault.conf : modele du depot complete avec l'AppRole, depose dans conf/ du bundle,
+      # la ou bin/run_reo.sh le cherche par defaut (REO_VAULT_CONF=<bundle>/conf/vault.conf)
+      vault_enabled: ${{ inputs.deploy_vault_conf == 'Yes' }}
+      vault_conf_template: 'conf/vault.conf.template'
+      vault_conf_name: 'vault.conf'
+      vault_conf_path: 'conf'
+      branch_name: ${{ inputs.branch_name }}
     secrets:
       awx_password: ${{ secrets.AWX_PASSWORD }}
-      jf_access_token: ${{ secrets.jf_access_token }}
+      jf_access_token: ${{ secrets.JF_ACCESS_TOKEN }}
+      # AppRole de l'environnement cible s'il existe (VAULT_ROLE_ID_PRD...), sinon l'AppRole commun
+      vault_role_id: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID }}
+      vault_secret_id: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID }}

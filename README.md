@@ -60,9 +60,33 @@ Le script lance `spark3-submit` (le jar est en Scala 2.12 ; sur CDP, `spark-subm
 
 **SQL Server (chaîne COVID)** : même modèle que le projet PUSHSQLSERVER. Le compte et le mot de passe sont lus dans Vault (AppRole, `dfin.bsy.reo.mssqlserver` de `reo_alim.conf`), jamais dans la configuration. Avant le premier lancement :
 
-1. créer `vault.conf` sur l'edge à partir de `conf/vault.conf.template` (`roleId`, `secretId` de l'AppRole BSY_A2918), hors du dépôt Git, en `chmod 600` ;
+1. créer `vault.conf` sur l'edge à partir de `conf/vault.conf.template` (`roleId`, `secretId` de l'AppRole BSY_A2918), hors du dépôt Git, en `chmod 600`. Le CD le fait lui-même (voir « CI/CD ») ;
 2. lancer avec `REO_VAULT_CONF=<chemin>/vault.conf` (défaut : `conf/vault.conf` du bundle) : le script l'envoie au driver YARN (`--files`) et positionne `vault_config_file` ;
 3. l'accès Vault (adresse, namespace, secret `kv/mssql`, clés `user2` / `password2`) est celui de PUSHSQLSERVER.
+
+## CI/CD
+
+Les deux workflows du dépôt s'appuient sur les workflows réutilisables de `DTUTransverse/reusable-github-actions`, et se lancent à la main (`workflow_dispatch`).
+
+**`.github/workflows/maven-ci.yml`** :
+- il contrôle le projet, puis construit et publie le jar dans JFrog ;
+- les tests tournent, sauf avec `skip_tests` ;
+- il vérifie que les trois drivers sont dans le jar ;
+- sur `main` / `master`, la version du pom est publiée en release et taguée. Ailleurs, elle part en snapshot.
+
+**`.github/workflows/maven-cd.yml`** déploie par AWX vers `dev`, `int`, `fhml` ou `prd` :
+- `prd` n'accepte que `main` / `master` ;
+- un seul déploiement à la fois par environnement, jamais interrompu ;
+- avec `deploy_vault_conf: Yes`, il construit `vault.conf` à partir de `conf/vault.conf.template` et des secrets du dépôt. Il le dépose dans `conf/` du bundle, là où `bin/run_reo.sh` le cherche par défaut.
+
+Secrets et variables à déclarer :
+
+| Type | Nom |
+|---|---|
+| secrets | `JF_ACCESS_TOKEN`, `AWX_PASSWORD` |
+| secrets | `VAULT_ROLE_ID` et `VAULT_SECRET_ID`, ou par environnement `VAULT_ROLE_ID_PRD` / `VAULT_SECRET_ID_PRD`, etc., qui sont prioritaires |
+| variables | `JF_URL`, `JF_MVN_VIRTUAL`, `JF_MVN_RELEASES`, `JF_MVN_SNAPSHOTS`, `AWX_USER` |
+| variable par environnement GitHub | `AWX_JOB_ID` |
 
 ## Étapes et reprise
 

@@ -1,5 +1,7 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
+# CI du projet BSY_REO : controle, build + tests, publication JFrog, tag Git sur main / master.
+# Les workflows reutilisables viennent du depot generique DTUTransverse/reusable-github-actions.
+#
+# Prerequis du depot : secret JF_ACCESS_TOKEN ; variables JF_URL, JF_MVN_VIRTUAL, JF_MVN_RELEASES, JF_MVN_SNAPSHOTS.
 
 name: Scala CI with Jfrog
 
@@ -8,50 +10,69 @@ on:
     inputs:
       branch_name:
         type: string
-        description: The branch name to deploy to
+        description: "Branche a construire (vide : la branche selectionnee ci-dessus)"
+      skip_tests:
+        type: boolean
+        default: false
+        description: "Ne pas lancer les tests unitaires"
+
 env:
   JFROG_CLI_RELEASES_REPO: setup-jfrog-cli-server/jfrog-releases
 
-concurrency:
-  group: '${{ github.workflow }}  ${{ github.event.inputs.environment }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
-  cancel-in-progress: true
+permissions:
+  contents: read
 
+concurrency:
+  group: ${{ github.workflow }} @ ${{ inputs.branch_name || github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
   calculate-project-version:
     uses: DTUTransverse/reusable-github-actions/.github/workflows/project-version-generator.yml@main
     with:
-      is-snapshot: ${{ github.event.inputs.branch_name != 'main' || github.event.inputs.branch_name != 'master' }}
-      branch_name: ${{ github.event.inputs.branch_name }}
+      # Release sur main / master, snapshot ailleurs
+      is-snapshot: ${{ !contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
+      branch_name: ${{ inputs.branch_name }}
+
   init-control-project:
     uses: DTUTransverse/reusable-github-actions/.github/workflows/init-controls-project-scala.yml@main
     needs: [ calculate-project-version ]
     with:
-      skip-tests: true #false
-      is-snapshot: ${{ github.event.inputs.branch_name != 'main' || github.event.inputs.branch_name != 'master' }}
-      branch_name: ${{ github.event.inputs.branch_name }}
+      is-snapshot: ${{ !contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
+      branch_name: ${{ inputs.branch_name }}
     secrets:
       jf-secret: ${{ secrets.JF_ACCESS_TOKEN }}
+
   #  sonar-scan:
   #    uses: DTUTransverse/reusable-github-actions/.github/workflows/sonar-scan.yml@main
-  #    needs: [ calculate-project-version, init-control-project ]
+  #    needs: [ calculate-project-version, build-project ]
   #    with:
   #      project-version: ${{ needs.calculate-project-version.outputs.tag-version }}
+  #      branch_name: ${{ inputs.branch_name }}
   #    secrets:
   #      SONAR_SECRET: ${{ secrets.SONAR_SECRET }}
+
   build-project:
     uses: DTUTransverse/reusable-github-actions/.github/workflows/build-project-scala.yml@main
     needs: [ calculate-project-version, init-control-project ]
-    # [ sonar-scan ]
     with:
-      skip-tests: true #false
-      is-snapshot: ${{ github.event.inputs.branch_name != 'main' || github.event.inputs.branch_name != 'master' }}
-      branch_name: ${{ github.event.inputs.branch_name }}
+      skip-tests: ${{ inputs.skip_tests }}
+      is-snapshot: ${{ !contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
+      branch_name: ${{ inputs.branch_name }}
+      # Les trois drivers lances par bin/run_reo.sh doivent etre dans le jar publie
+      expected-classes: >-
+        com.bsy.datalake.reo.job.MainDriverAjustReo,
+        com.bsy.datalake.reo.job.MainDriverMyReo,
+        com.bsy.datalake.reo.job.MainDriverReo
     secrets:
       jf-secret: ${{ secrets.JF_ACCESS_TOKEN }}
+
   create-github-tag:
     uses: DTUTransverse/reusable-github-actions/.github/workflows/github-tag-creator.yml@main
-    needs: [ build-project,  calculate-project-version ] #sonar-scan,
-    if: ${{ github.event.inputs.branch_name == 'main' || github.event.inputs.branch_name == 'master' }}
+    needs: [ build-project, calculate-project-version ]
+    if: ${{ contains(fromJSON('["main", "master"]'), inputs.branch_name || github.ref_name) }}
+    permissions:
+      contents: write
     with:
       tag-version: ${{ needs.calculate-project-version.outputs.tag-version }}
+      ref: ${{ inputs.branch_name }}
