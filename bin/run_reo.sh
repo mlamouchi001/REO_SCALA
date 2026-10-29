@@ -60,7 +60,7 @@ if [ -n "${REO_PRINCIPAL:-}" ] && [ -n "${REO_KEYTAB:-}" ]; then
 fi
 
 # shellcheck disable=SC2086
-exec spark-submit \
+exec spark3-submit \
   --master yarn \
   --deploy-mode cluster \
   --name "BSY_REO_$(echo "$CHAIN" | tr '[:lower:]' '[:upper:]')_${ENV}" \
