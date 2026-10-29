@@ -166,13 +166,14 @@ class CovidConfFileSpec extends AnyFlatSpec with Matchers {
     val servers = Map("dev" -> ("192.88.193.30", "MSPARTBSYD100"), "int" -> ("192.199.96.205", "HBSYSQL01"),
       "hom" -> ("192.199.96.83", "MSPARTBSYH101"), "prd" -> ("192.197.102.226", "MSPARTBSYP101"))
     envPrefixes.foreach { case (env, _) =>
-      val vault = new FakeVaultManager(Map("user" -> "APP", "password" -> "pwd"))
+      val vault = new FakeVaultManager(Map("user2" -> "APP", "password2" -> "pwd", "user" -> "autre"))
       val c = MsSqlServerConf.from(new ReoConf(covid, env), vault)
       val (server, instance) = servers(env)
       c.getJdbcUrl shouldBe s"jdbc:sqlserver://$server:14001;instanceName=$instance;database=BSY_REO;" +
         "integratedSecurity=false;encrypt=true;trustServerCertificate=true"
       vault.calls shouldBe Seq(("https://vault.cloud.socgen", "myVault/BSY_A2918_PRD_FRG_A2918_PRD", "approle",
         "kv/mssql", 2))
+      (c.user, c.password) shouldBe (("APP", "pwd"))
       covid.hasPath(s"$CONF_ROOT.mssqlserver.$env.user") shouldBe false
       covid.hasPath(s"$CONF_ROOT.mssqlserver.$env.password") shouldBe false
     }

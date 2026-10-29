@@ -62,7 +62,7 @@ Le script lance `spark3-submit` (le jar est en Scala 2.12 ; sur CDP, `spark-subm
 
 1. créer `vault.conf` sur l'edge à partir de `conf/vault.conf.template` (`roleId`, `secretId` de l'AppRole BSY_A2918), hors du dépôt Git, en `chmod 600` ;
 2. lancer avec `REO_VAULT_CONF=<chemin>/vault.conf` (défaut : `conf/vault.conf` du bundle) : le script l'envoie au driver YARN (`--files`) et positionne `vault_config_file` ;
-3. confirmer `userKey` / `passwordKey` (clés du compte BSY_REO dans le secret `kv/mssql`) et le namespace Vault, repris de PUSHSQLSERVER.
+3. l'accès Vault (adresse, namespace, secret `kv/mssql`, clés `user2` / `password2`) est celui de PUSHSQLSERVER.
 
 ## Étapes et reprise
 
