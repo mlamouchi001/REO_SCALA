@@ -1,0 +1,113 @@
+# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
+# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
+
+name: Scala CD for Jfrog
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options:
+          - dev
+          - int
+          - fhml
+          - prd
+        description: The target environment to deploy to
+      branch_name:
+        type: string
+        description: The branch name to deploy to
+      app_version:
+        type: string
+        default: latest
+        description: "Version of application"
+      jar_name:
+        type: string
+        default: default
+        description: "Name jar for the migration"
+      deploy_config_file:
+        type: choice
+        options:
+          - Yes
+          - No
+        default: No
+        description: Deploy the config files ?
+      application_conf:
+        type: string
+        default: all
+        description: "Application config file"
+    secrets:
+      awx_password:
+        required: true
+        description: "AWX Password."
+      jfrog_token_scribe:
+        required: true
+        description: "Jfrog secret token."
+
+env:
+  JFROG_CLI_RELEASES_REPO: setup-jfrog-cli-server/jfrog-releases
+
+concurrency:
+  group: '${{ github.workflow }}  ${{ github.event.inputs.environment }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
+
+jobs:
+  calculate-project-version:
+    uses: DTUTransverse/reusable-github-actions/.github/workflows/get_project_infos.yml@main
+    with:
+      is-snapshot: ${{ github.event.inputs.branch_name != 'main' && github.event.inputs.branch_name != 'master' }}
+      branch_name: ${{ github.event.inputs.branch_name }}
+  calcul_job_awx:
+    environment: ${{ github.event.inputs.environment }}
+    runs-on: [ self-hosted, linux ]
+    needs: [ calculate-project-version ]
+    outputs:
+      job-awx: ${{ steps.calcul_job_awx.outputs.job-awx }}
+      repo_jfrog: ${{ steps.calcul_job_awx.outputs.repo_jfrog }}
+      project_version: ${{ steps.calcul_job_awx.outputs.project_version }}
+    steps:
+      - name: calcul_job_awx
+        id: calcul_job_awx
+        run: |
+          echo "job-awx=${{ vars.AWX_JOB_ID }}" >> $GITHUB_OUTPUT
+          echo "job-awx=${{ vars.AWX_JOB_ID }}"
+          if [[ ${{ github.event.inputs.branch_name }} != 'main' && ${{ github.event.inputs.branch_name }} != 'master'  ]]; then
+            echo "repo_jfrog=${{ vars.JF_MVN_SNAPSHOTS }}" >> $GITHUB_OUTPUT
+          else
+            echo "repo_jfrog=${{ vars.JF_MVN_RELEASES }}" >> $GITHUB_OUTPUT
+          fi
+          if [[ ${{ github.event.inputs.app_version }} == 'latest' ]]; then
+            echo "project_version=${{ needs.calculate-project-version.outputs.version_prj }}" >> $GITHUB_OUTPUT
+          else
+            echo "project_version=${{ github.event.inputs.app_version }}" >> $GITHUB_OUTPUT
+          fi
+          if [[ -z "${{ secrets.AWX_PASSWORD }}" ]]; then
+            echo " Secret vice " 
+          else
+            echo "Secret non vide" 
+          fi
+  deploy_awx:
+    needs: [ calculate-project-version, calcul_job_awx ]
+    uses: DTUTransverse/reusable-github-actions/.github/workflows/deploy_awx_jfrog.yml@main
+    with:
+      is-snapshot: ${{ github.event.inputs.branch_name != 'main' && github.event.inputs.branch_name != 'master' }}
+      awx-user: ${{ vars.AWX_USER }}
+      app_config: 'app/bsy_a2918/scala'
+      app_version: ${{ needs.calcul_job_awx.outputs.project_version }}
+      application_conf: ${{ github.event.inputs.application_conf }}
+      env: ${{ github.event.inputs.environment}}
+      irt_trigram: 'bsy_a2918'
+      path_source: 'scala'
+      project_group_id: ${{ needs.calculate-project-version.outputs.groupId }}
+      path_group_id: ${{ needs.calculate-project-version.outputs.path-groupId }}
+      project_name: ${{ needs.calculate-project-version.outputs.project-name }}
+      project_version: ${{ needs.calcul_job_awx.outputs.project_version }}
+      job-awx: ${{ needs.calcul_job_awx.outputs.job-awx }}
+      repo_jfrog: ${{ needs.calcul_job_awx.outputs.repo_jfrog }}
+      jar_name: ${{ github.event.inputs.jar_name }}
+      deploy_config_file: ${{ github.event.inputs.deploy_config_file == 'true' }}
+      path_conf: '/files/'
+    secrets:
+      awx_password: ${{ secrets.AWX_PASSWORD }}
+      jf_access_token: ${{ secrets.jf_access_token }}
