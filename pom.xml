@@ -26,7 +26,6 @@
         <spark-version>3.3.2.3.3.7190.0-91</spark-version>
         <!-- <spark-version>2.4.0</spark-version> -->
         <scala.dep.version>2.12</scala.dep.version>
-        <hadoop>2.7.3</hadoop>
         <maven-assembly-plugin.version>2.5.4</maven-assembly-plugin.version>
         <!-- <maven.test.skip>true</maven.test.skip> -->
         <!--<maven.test.failure.ignore>true</maven.test.failure.ignore>-->
@@ -67,18 +66,8 @@
             <scope>provided</scope>
         </dependency>
 
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-hdfs</artifactId>
-            <version>${hadoop}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-common</artifactId>
-            <version>${hadoop}</version>
-            <scope>provided</scope>
-        </dependency>
+        <!-- Hadoop : celui de Spark (Hadoop 3 sur CDP 7.1.9), comme EXP_ENG_FRG_SUV. Forcer hadoop-common /
+             hadoop-hdfs 2.7.3 casse les tests Spark 3 (NoClassDefFoundError KeyProviderTokenIssuer). -->
 
         <!-- https://mvnrepository.com/artifact/com.typesafe/config -->
         <dependency>
