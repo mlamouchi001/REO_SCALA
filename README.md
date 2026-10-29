@@ -61,8 +61,21 @@ Le script lance `spark3-submit` (le jar est en Scala 2.12 ; sur CDP, `spark-subm
 **SQL Server (chaîne ALIM)** : même modèle que le projet PUSHSQLSERVER. Le compte et le mot de passe sont lus dans Vault (AppRole, `dfin.bsy.reo.mssqlserver` de `reo_alim.conf`), jamais dans la configuration. Avant le premier lancement :
 
 1. créer `vault.conf` sur l'edge à partir de `conf/vault.conf.template` (`roleId`, `secretId` de l'AppRole BSY_A2918), hors du dépôt Git, en `chmod 600`. Le CD le fait lui-même (voir « CI/CD ») ;
-2. lancer avec `REO_VAULT_CONF=<chemin>/vault.conf` (défaut : `conf/vault.conf` du bundle) : le script l'envoie au driver YARN (`--files`) et positionne `vault_config_file` ;
+2. lancer avec `REO_VAULT_CONF=<chemin>/vault.conf` (défaut : `conf/vault.conf` de l'application) : le script l'envoie au driver YARN (`--files`) et positionne `vault_config_file` ;
 3. l'accès Vault (adresse, namespace, secret `kv/mssql`, clés `user2` / `password2`) est celui de PUSHSQLSERVER.
+
+## Installation sur l'edge
+
+Le playbook AWX (dépôt DEPLOY_SCALA_JFROG) installe l'application dans `/DATA/applications_01/bsy_a2918/<env>/scala` :
+
+```
+bin/bsy_reo-<version>.jar   fat jar publié dans JFrog
+sh/run_reo.sh               script de lancement (bundle zip)
+conf/*.conf                 configurations (bundle zip, avec deploy_config_file), copiées aussi sur HDFS
+conf/vault.conf             AppRole Vault, droits 600 (CD avec deploy_vault_conf)
+```
+
+Le bundle `bsy_reo-<version>.zip` (`assembly/assembly.xml`) contient `bin/run_reo.sh` et `conf/*.conf`. `run_reo.sh` prend le jar le plus récent de `bin/` (ou de `lib/`), sauf si `REO_JAR` le désigne.
 
 ## CI/CD
 

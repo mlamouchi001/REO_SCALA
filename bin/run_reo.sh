@@ -24,7 +24,7 @@
 # secretId ; modele conf/vault.conf.template) est envoye au driver YARN par --files, et vault_config_file le
 # designe. Chemin sur l'edge : REO_VAULT_CONF (defaut <bundle>/conf/vault.conf).
 # Variables surchargeables : SPARK_SUBMIT (defaut spark3-submit : le jar est en Scala 2.12, spark-submit est
-# Spark 2 sur CDP), REO_JAR (defaut : l'unique jar de <bundle>/lib).
+# Spark 2 sur CDP), REO_JAR (defaut : le jar le plus recent de <application>/bin ou lib).
 # ======================================================================================================
 set -eu
 
@@ -37,16 +37,21 @@ BASE_DIR=$(cd "$(dirname "$0")/.." && pwd)
 SPARK_SUBMIT="${SPARK_SUBMIT:-spark3-submit}"
 command -v "$SPARK_SUBMIT" >/dev/null 2>&1 || { echo "ERREUR : $SPARK_SUBMIT introuvable" >&2; exit 5; }
 
-# Fat jar : REO_JAR, sinon l'unique jar de lib/ (bsy_reo-<version>.jar ou bsy_reo-<version>-jar-with-dependencies.jar)
+# Fat jar : REO_JAR, sinon le jar bsy_reo*.jar de bin/ (installation AWX : <application>/{bin,sh,conf}) ou de lib/.
+# Plusieurs versions presentes (un deploiement par version) : la plus recente est prise, avec un avertissement.
 if [ -n "${REO_JAR:-}" ]; then
   JAR="$REO_JAR"
 else
-  JARS=$(ls "$BASE_DIR"/lib/bsy_reo-*.jar 2>/dev/null || true)
-  if [ "$(printf '%s\n' "$JARS" | grep -c .)" -ne 1 ]; then
-    echo "ERREUR : un seul jar bsy_reo-*.jar attendu dans $BASE_DIR/lib (trouve : ${JARS:-aucun})" >&2
+  JARS=$(ls -t "$BASE_DIR"/bin/bsy_reo*.jar "$BASE_DIR"/lib/bsy_reo*.jar 2>/dev/null || true)
+  NB_JARS=$(printf '%s\n' "$JARS" | grep -c . || true)
+  if [ "$NB_JARS" -eq 0 ]; then
+    echo "ERREUR : aucun jar bsy_reo*.jar dans $BASE_DIR/bin ni $BASE_DIR/lib (REO_JAR pour le designer)" >&2
     exit 3
   fi
-  JAR="$JARS"
+  JAR=$(printf '%s\n' "$JARS" | head -n 1)
+  if [ "$NB_JARS" -gt 1 ]; then
+    echo "ATTENTION : $NB_JARS jars bsy_reo*.jar, le plus recent est utilise : $JAR (REO_JAR pour en imposer un)" >&2
+  fi
 fi
 [ -f "$JAR" ] || { echo "ERREUR : jar introuvable : $JAR" >&2; exit 3; }
 
