@@ -100,7 +100,7 @@ Secrets et variables à déclarer :
 | Type | Nom |
 |---|---|
 | secrets | `JF_ACCESS_TOKEN`, `AWX_PASSWORD` |
-| secrets | `VAULT_ROLE_ID` et `VAULT_SECRET_ID` (dépôt ou environnement GitHub), ou `VAULT_ROLE_ID_PRD` / `VAULT_SECRET_ID_PRD`, etc., qui sont prioritaires. Anciens noms acceptés : `APPROLE_ID` / `APPROLE_SECRET`. Le role_id peut aussi être une variable `VAULT_ROLE_ID` |
+| secrets | `VAULT_ROLE_ID` et `VAULT_SECRET_ID` (dépôt ou environnement GitHub), ou `VAULT_ROLE_ID_PRD` / `VAULT_SECRET_ID_PRD`, etc., qui sont prioritaires. Noms également acceptés : `VAULT_ROLE_SECRET` pour le secret_id, et les anciens `APPROLE_ID` / `APPROLE_SECRET`. Le role_id peut aussi être une variable `VAULT_ROLE_ID` |
 | variables | `JF_URL`, `JF_MVN_VIRTUAL`, `JF_MVN_RELEASES`, `JF_MVN_SNAPSHOTS`, `AWX_USER` |
 | variable par environnement GitHub | `AWX_JOB_ID` |
 

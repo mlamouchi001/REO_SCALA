@@ -165,8 +165,9 @@ jobs:
         env:
           # AppRole, par ordre de priorite : secret VAULT_ROLE_ID_<ENV>, secret VAULT_ROLE_ID (depot ou environnement
           # GitHub), ancien nom APPROLE_ID ; le role_id, non confidentiel, peut aussi etre une variable VAULT_ROLE_ID.
+          # secret_id : VAULT_SECRET_ID ou VAULT_ROLE_SECRET (avec ou sans _<ENV>), ancien nom APPROLE_SECRET.
           VAULT_ROLE_ID: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID || secrets.APPROLE_ID || vars[format('VAULT_ROLE_ID_{0}', inputs.environment)] || vars.VAULT_ROLE_ID }}
-          VAULT_SECRET_ID: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID || secrets.APPROLE_SECRET }}
+          VAULT_SECRET_ID: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID || secrets[format('VAULT_ROLE_SECRET_{0}', inputs.environment)] || secrets.VAULT_ROLE_SECRET || secrets.APPROLE_SECRET }}
           TARGET_ENV: ${{ inputs.environment }}
           TEMPLATE: conf/vault.conf.template
         run: |
