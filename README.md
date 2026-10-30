@@ -90,7 +90,8 @@ Les deux workflows du dépôt s'appuient sur les workflows réutilisables de `DT
 **`.github/workflows/maven-cd.yml`** déploie par AWX vers `dev`, `int`, `fhml` ou `prd` :
 - `prd` n'accepte que `main` / `master` ;
 - un seul déploiement à la fois par environnement, jamais interrompu ;
-- avec `deploy_vault_conf: Yes`, il construit `vault.conf` à partir de `conf/vault.conf.template` et des secrets du dépôt. Il le dépose dans `conf/` du bundle, là où `bin/run_reo.sh` le cherche par défaut.
+- avec `deploy_vault_conf: Yes` (défaut), il construit `vault.conf` à partir de `conf/vault.conf.template` et des secrets du dépôt. Il le dépose dans `conf/` du bundle, là où `bin/run_reo.sh` le cherche par défaut. Avec le playbook AWX `deploy_vault.yml`, le fichier est déposé à son emplacement historique `<path_principal_deploy>/bsy_a2918/files/vault.conf`, que `bin/run_reo.sh` prend en secours ;
+- la gestion de `vault.conf` demande la version à jour du dépôt générique (inputs `vault_enabled`, `vault_conf_*`, secrets `vault_role_id` / `vault_secret_id`). Sans elle, le CD s'arrête au démarrage sur « Invalid input, vault_enabled is not defined ».
 
 Secrets et variables à déclarer :
 

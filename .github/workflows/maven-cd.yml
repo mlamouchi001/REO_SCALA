@@ -7,6 +7,8 @@
 #               VAULT_ROLE_ID / VAULT_SECRET_ID (AppRole commun), ou par environnement
 #               VAULT_ROLE_ID_<ENV> / VAULT_SECRET_ID_<ENV> (ex. VAULT_ROLE_ID_PRD), prioritaires ;
 #   variables : AWX_USER, JF_MVN_SNAPSHOTS, JF_MVN_RELEASES ; AWX_JOB_ID par environnement GitHub.
+# Le depot generique doit gerer vault.conf (inputs vault_enabled, vault_conf_*, secrets vault_role_id /
+# vault_secret_id) : version mlamouchi001/reusable-github-actions d60ec16 ou ulterieure.
 
 name: Scala CD for Jfrog
 
@@ -45,7 +47,7 @@ on:
           - "Yes"
           - "No"
         default: "Yes"
-        description: "Deposer vault.conf ? (inactif tant que le depot generique DTUTransverse ne gere pas vault.conf)"
+        description: "Deposer vault.conf (AppRole Vault, secrets VAULT_ROLE_ID / VAULT_SECRET_ID) ?"
       application_conf:
         type: string
         default: all
@@ -137,17 +139,16 @@ jobs:
       jar_name: ${{ inputs.jar_name }}
       deploy_config_file: ${{ inputs.deploy_config_file == 'Yes' }}
       path_conf: '/files/'
-      # A decommenter quand DTUTransverse/reusable-github-actions aura la gestion de vault.conf
-      # (vault_enabled...) : modele du depot complete avec l'AppRole, depose dans conf/ du bundle,
+      # vault.conf : modele du depot complete avec l'AppRole, depose dans conf/ du bundle,
       # la ou bin/run_reo.sh le cherche par defaut (REO_VAULT_CONF=<bundle>/conf/vault.conf).
-      # vault_enabled: ${{ inputs.deploy_vault_conf == 'Yes' }}
-      # vault_conf_template: 'conf/vault.conf.template'
-      # vault_conf_name: 'vault.conf'
-      # vault_conf_path: 'conf'
-      # branch_name: ${{ inputs.branch_name }}
+      vault_enabled: ${{ inputs.deploy_vault_conf == 'Yes' }}
+      vault_conf_template: 'conf/vault.conf.template'
+      vault_conf_name: 'vault.conf'
+      vault_conf_path: 'conf'
+      branch_name: ${{ inputs.branch_name }}
     secrets:
       awx_password: ${{ secrets.AWX_PASSWORD }}
       jf_access_token: ${{ secrets.JF_ACCESS_TOKEN }}
       # AppRole de l'environnement cible s'il existe (VAULT_ROLE_ID_PRD...), sinon l'AppRole commun
-      # vault_role_id: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID }}
-      # vault_secret_id: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID }}
+      vault_role_id: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID }}
+      vault_secret_id: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID }}

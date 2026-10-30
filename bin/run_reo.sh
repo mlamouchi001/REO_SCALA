@@ -22,7 +22,7 @@
 #
 # Chaine alim, identifiants SQL Server lus dans Vault (comme PUSHSQLSERVER) : le fichier vault.conf (roleId,
 # secretId ; modele conf/vault.conf.template) est envoye au driver YARN par --files, et vault_config_file le
-# designe. Chemin sur l'edge : REO_VAULT_CONF (defaut <bundle>/conf/vault.conf).
+# designe. Chemin sur l'edge : REO_VAULT_CONF (defaut <bundle>/conf/vault.conf, sinon <trigramme>/files/vault.conf).
 # Variables surchargeables : SPARK_SUBMIT (defaut spark3-submit : le jar est en Scala 2.12, spark-submit est
 # Spark 2 sur CDP), REO_JAR (defaut : le jar le plus recent de <application>/bin ou lib).
 # ======================================================================================================
@@ -90,7 +90,12 @@ fi
 
 VAULT_OPTS=""
 if [ "$CHAIN" = "alim" ]; then
+  # Defaut : conf/vault.conf (playbook AWX deploy.yml), sinon <trigramme>/files/vault.conf (deploy_vault.yml)
   VAULT_CONF="${REO_VAULT_CONF:-$BASE_DIR/conf/vault.conf}"
+  LEGACY_VAULT_CONF="$BASE_DIR/../../files/vault.conf"
+  if [ -z "${REO_VAULT_CONF:-}" ] && [ ! -f "$VAULT_CONF" ] && [ -f "$LEGACY_VAULT_CONF" ]; then
+    VAULT_CONF=$(cd "$(dirname "$LEGACY_VAULT_CONF")" && pwd)/vault.conf
+  fi
   if [ -f "$VAULT_CONF" ]; then
     VAULT_OPTS="--files $VAULT_CONF --conf spark.yarn.appMasterEnv.vault_config_file=$(basename "$VAULT_CONF")"
   else
