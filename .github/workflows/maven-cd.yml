@@ -170,8 +170,17 @@ jobs:
           VAULT_SECRET_ID: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID || secrets[format('VAULT_ROLE_SECRET_{0}', inputs.environment)] || secrets.VAULT_ROLE_SECRET || secrets.APPROLE_SECRET }}
           TARGET_ENV: ${{ inputs.environment }}
           TEMPLATE: conf/vault.conf.template
+          # Diagnostic : presence (true / false) de chaque nom, jamais la valeur
+          SEEN: >-
+            VAULT_ROLE_ID=${{ secrets.VAULT_ROLE_ID != '' }}
+            VAULT_ROLE_SECRET=${{ secrets.VAULT_ROLE_SECRET != '' }}
+            VAULT_SECRET_ID=${{ secrets.VAULT_SECRET_ID != '' }}
+            VAULT_ROLE_ID_<ENV>=${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] != '' }}
+            VAULT_ROLE_SECRET_<ENV>=${{ secrets[format('VAULT_ROLE_SECRET_{0}', inputs.environment)] != '' }}
+            variable VAULT_ROLE_ID=${{ vars.VAULT_ROLE_ID != '' }}
         run: |
           set -euo pipefail
+          echo "Secrets visibles par le job (environnement $TARGET_ENV) : $SEEN"
           WORK_DIR="$RUNNER_TEMP/vault-conf-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -p "$WORK_DIR" && chmod 700 "$WORK_DIR"
           echo "WORK_DIR=$WORK_DIR" >> "$GITHUB_ENV"
