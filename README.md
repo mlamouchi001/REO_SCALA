@@ -90,8 +90,10 @@ Les deux workflows du dépôt s'appuient sur les workflows réutilisables de `DT
 **`.github/workflows/maven-cd.yml`** déploie par AWX vers `dev`, `int`, `fhml` ou `prd` :
 - `prd` n'accepte que `main` / `master` ;
 - un seul déploiement à la fois par environnement, jamais interrompu ;
-- avec `deploy_vault_conf: Yes` (défaut), il construit `vault.conf` à partir de `conf/vault.conf.template` et des secrets du dépôt. Il le dépose dans `conf/` du bundle, là où `bin/run_reo.sh` le cherche par défaut. Avec le playbook AWX `deploy_vault.yml`, le fichier est déposé à son emplacement historique `<path_principal_deploy>/bsy_a2918/files/vault.conf`, que `bin/run_reo.sh` prend en secours ;
-- la gestion de `vault.conf` demande la version à jour du dépôt générique (inputs `vault_enabled`, `vault_conf_*`, secrets `vault_role_id` / `vault_secret_id`). Sans elle, le CD s'arrête au démarrage sur « Invalid input, vault_enabled is not defined ».
+- avec `deploy_vault_conf: Yes` (défaut), le job `deploy_vault_conf` construit `vault.conf` à partir de `conf/vault.conf.template` et des secrets du dépôt, après le déploiement du jar. Il relance le même job template AWX avec `vault_only: true`, et le playbook DEPLOY_SCALA_JFROG dépose alors seulement le fichier, en droits 600 :
+  - avec `deploy.yml`, dans `conf/` de l'application, là où `bin/run_reo.sh` le cherche par défaut ;
+  - avec `deploy_vault.yml`, à l'emplacement historique `<path_principal_deploy>/bsy_a2918/files/vault.conf`, que `bin/run_reo.sh` prend en secours ;
+- ce job ne dépend pas du dépôt générique : il fonctionne avec la version actuelle de `DTUTransverse/reusable-github-actions`. Il demande la version du playbook AWX qui gère `vault_only`.
 
 Secrets et variables à déclarer :
 

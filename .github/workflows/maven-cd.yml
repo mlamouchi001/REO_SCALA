@@ -7,8 +7,9 @@
 #               VAULT_ROLE_ID / VAULT_SECRET_ID (AppRole commun), ou par environnement
 #               VAULT_ROLE_ID_<ENV> / VAULT_SECRET_ID_<ENV> (ex. VAULT_ROLE_ID_PRD), prioritaires ;
 #   variables : AWX_USER, JF_MVN_SNAPSHOTS, JF_MVN_RELEASES ; AWX_JOB_ID par environnement GitHub.
-# Le depot generique doit gerer vault.conf (inputs vault_enabled, vault_conf_*, secrets vault_role_id /
-# vault_secret_id) : version mlamouchi001/reusable-github-actions d60ec16 ou ulterieure.
+# vault.conf (deploy_vault_conf) : construit ici a partir de conf/vault.conf.template et des secrets AppRole,
+# puis depose par le meme job template AWX en mode vault_only (playbook DEPLOY_SCALA_JFROG). Le depot generique
+# n'a donc pas besoin de gerer Vault.
 
 name: Scala CD for Jfrog
 
@@ -47,7 +48,7 @@ on:
           - "Yes"
           - "No"
         default: "Yes"
-        description: "Deposer vault.conf (AppRole Vault, secrets VAULT_ROLE_ID / VAULT_SECRET_ID) ?"
+        description: "Deposer vault.conf (AppRole Vault, secrets VAULT_ROLE_ID / VAULT_SECRET_ID) ? Playbook AWX avec vault_only requis"
       application_conf:
         type: string
         default: all
@@ -139,16 +140,137 @@ jobs:
       jar_name: ${{ inputs.jar_name }}
       deploy_config_file: ${{ inputs.deploy_config_file == 'Yes' }}
       path_conf: '/files/'
-      # vault.conf : modele du depot complete avec l'AppRole, depose dans conf/ du bundle,
-      # la ou bin/run_reo.sh le cherche par defaut (REO_VAULT_CONF=<bundle>/conf/vault.conf).
-      vault_enabled: ${{ inputs.deploy_vault_conf == 'Yes' }}
-      vault_conf_template: 'conf/vault.conf.template'
-      vault_conf_name: 'vault.conf'
-      vault_conf_path: 'conf'
-      branch_name: ${{ inputs.branch_name }}
     secrets:
       awx_password: ${{ secrets.AWX_PASSWORD }}
       jf_access_token: ${{ secrets.JF_ACCESS_TOKEN }}
-      # AppRole de l'environnement cible s'il existe (VAULT_ROLE_ID_PRD...), sinon l'AppRole commun
-      vault_role_id: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID }}
-      vault_secret_id: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID }}
+
+  # vault.conf : modele du depot complete avec l'AppRole, depose par AWX (vault_only) dans conf/ de
+  # l'application, la ou bin/run_reo.sh le cherche par defaut (deploy_vault.yml : <trigramme>/files/).
+  deploy_vault_conf:
+    if: inputs.deploy_vault_conf == 'Yes'
+    needs: [ calculate-project-version, calcul_job_awx, deploy_awx ]
+    runs-on: [ self-hosted, linux ]
+    timeout-minutes: 60
+    env:
+      AWX_URL: https://awx.world.socgen
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch_name || github.ref_name }}
+
+      - name: Render vault.conf from repository secrets
+        env:
+          # AppRole de l'environnement cible s'il existe (VAULT_ROLE_ID_PRD...), sinon l'AppRole commun
+          VAULT_ROLE_ID: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID }}
+          VAULT_SECRET_ID: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID }}
+          TEMPLATE: conf/vault.conf.template
+        run: |
+          set -euo pipefail
+          WORK_DIR="$RUNNER_TEMP/vault-conf-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$WORK_DIR" && chmod 700 "$WORK_DIR"
+          echo "WORK_DIR=$WORK_DIR" >> "$GITHUB_ENV"
+          for v in VAULT_ROLE_ID VAULT_SECRET_ID; do
+            [[ -n "${!v}" ]] || { echo "::error::Secret $v (ou ${v}_<ENV>) absent du depot"; exit 1; }
+            # Identifiants AppRole : caracteres sans signification HOCON, donc ecrits sans echappement
+            [[ "${!v}" =~ ^[A-Za-z0-9._:/+=@-]+$ ]] || { echo "::error::$v contient des caracteres non autorises"; exit 1; }
+            echo "::add-mask::${!v}"
+          done
+          umask 077
+          # Remplace la valeur des cles roleId / secretId en conservant l'indentation (une ligne chacune)
+          awk '
+            /^[[:space:]]*roleId[[:space:]]*[=:]/   { match($0, /^[[:space:]]*/); print substr($0, 1, RLENGTH) "roleId   = \"" ENVIRON["VAULT_ROLE_ID"] "\"";   r++; next }
+            /^[[:space:]]*secretId[[:space:]]*[=:]/ { match($0, /^[[:space:]]*/); print substr($0, 1, RLENGTH) "secretId = \"" ENVIRON["VAULT_SECRET_ID"] "\""; s++; next }
+            { print }
+            END { if (r != 1 || s != 1) { printf "roleId trouve %d fois, secretId %d fois (1 attendu)\n", r, s > "/dev/stderr"; exit 3 } }
+          ' "$TEMPLATE" > "$WORK_DIR/vault.conf" || { echo "::error::Modele $TEMPLATE inexploitable"; exit 1; }
+          if grep -v '^[[:space:]]*#' "$WORK_DIR/vault.conf" | grep -q 'A_RENSEIGNER'; then
+            echo "::error::vault.conf contient encore la valeur A_RENSEIGNER"; exit 1
+          fi
+          b64=$(base64 < "$WORK_DIR/vault.conf" | tr -d '\n')
+          echo "::add-mask::$b64"
+          printf '%s' "$b64" > "$WORK_DIR/vault_conf.b64"
+          rm -f "$WORK_DIR/vault.conf"
+          echo "vault.conf construit (contenu masque)"
+
+      - name: Launch AWX job (vault_only)
+        id: launch
+        env:
+          AWX_USER: ${{ vars.AWX_USER }}
+          AWX_PASSWORD: ${{ secrets.AWX_PASSWORD }}
+          JOB_TEMPLATE: ${{ needs.calcul_job_awx.outputs.job-awx }}
+          X_ENV: ${{ inputs.environment }}
+          X_APP_CONFIG: 'app/bsy_a2918/scala'
+          X_APP_VERSION: ${{ needs.calcul_job_awx.outputs.project_version }}
+          X_IRT_TRIGRAM: 'bsy_a2918'
+          X_PATH_SOURCE: 'scala'
+          X_PROJECT_GROUP_ID: ${{ needs.calculate-project-version.outputs.groupId }}
+          X_PATH_GROUP_ID: ${{ needs.calculate-project-version.outputs.path-groupId }}
+          X_PROJECT_NAME: ${{ needs.calculate-project-version.outputs.project-name }}
+          X_PROJECT_VERSION: ${{ needs.calcul_job_awx.outputs.project_version }}
+          X_REPO_JFROG: ${{ needs.calcul_job_awx.outputs.repo_jfrog }}
+        run: |
+          set -euo pipefail
+          esc() { local s=${1//\\/\\\\}; printf '%s' "${s//\"/\\\"}"; }
+          umask 077
+          # Identifiants AWX dans un fichier de configuration curl : jamais en argument de commande
+          { printf 'user = "%s"\n' "$(esc "$AWX_USER:$AWX_PASSWORD")"; printf 'silent\nshow-error\ninsecure\nconnect-timeout = 30\nmax-time = 120\n'; } > "$WORK_DIR/curl.cfg"
+          X_VAULT_CONF_B64=$(cat "$WORK_DIR/vault_conf.b64") && export X_VAULT_CONF_B64
+          # Valeurs lues par jq dans l'environnement : ni interpolation shell, ni argument visible
+          payload=$(jq -n '{extra_vars: {
+            vault_only: "true", vault_enabled: "true", vault_conf_b64: env.X_VAULT_CONF_B64,
+            vault_conf_name: "vault.conf", vault_conf_path: "conf", file_conf: "vault.conf", path_conf: "/files/",
+            env: env.X_ENV, app_config: env.X_APP_CONFIG, app_version: env.X_APP_VERSION, irt_trigram: env.X_IRT_TRIGRAM,
+            path_source: env.X_PATH_SOURCE, project_group_id: env.X_PROJECT_GROUP_ID, path_group_id: env.X_PATH_GROUP_ID,
+            project_name: env.X_PROJECT_NAME, project_version: env.X_PROJECT_VERSION, repo_jfrog_prj: env.X_REPO_JFROG,
+            jar_name: "default", deploy_config_file: "false", deploy_hdfs: "false", only_jar: "false" }}')
+          body="$WORK_DIR/launch.json"
+          code=$(curl -K "$WORK_DIR/curl.cfg" -X POST -H "Content-Type: application/json" --data-binary @- \
+                   -o "$body" -w '%{http_code}' "$AWX_URL/api/v2/job_templates/$JOB_TEMPLATE/launch/" <<< "$payload") || code=000
+          job_id=$(jq -r '.job // empty' "$body" 2>/dev/null || true)
+          if [[ ! "$code" =~ ^20[012]$ || ! "$job_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Lancement AWX refuse (HTTP $code) : $(jq -r '.detail // (keys | join(", ")) // empty' "$body" 2>/dev/null || echo 'reponse illisible')"
+            exit 1
+          fi
+          echo "job_id=$job_id" >> "$GITHUB_OUTPUT"
+          echo "AWX Job ID: $job_id ($AWX_URL/#/jobs/playbook/$job_id/output)"
+          ignored=$(jq -r '.ignored_fields.extra_vars // empty | keys | join(", ")' "$body" 2>/dev/null || true)
+          if [[ -n "$ignored" ]]; then
+            echo "::error::AWX a ignore les variables ($ignored) : activez 'Prompt on launch' sur les variables du job template $JOB_TEMPLATE"
+            curl -K "$WORK_DIR/curl.cfg" -X POST "$AWX_URL/api/v2/jobs/$job_id/cancel/" -o /dev/null || true
+            exit 1
+          fi
+
+      - name: Wait for AWX job
+        env:
+          JOB_ID: ${{ steps.launch.outputs.job_id }}
+        run: |
+          set -uo pipefail
+          # Le job template peut etre deja occupe par le deploiement du jar : le job attend son tour (pending)
+          deadline=$(( $(date +%s) + 45 * 60 ))
+          errors=0
+          while :; do
+            status=$(curl -K "$WORK_DIR/curl.cfg" -f --retry 3 --retry-delay 5 "$AWX_URL/api/v2/jobs/$JOB_ID/" | jq -r '.status // empty' 2>/dev/null || true)
+            echo "$(date +%T) AWX Job Status: ${status:-inconnu}"
+            case "$status" in
+              successful) echo "vault.conf depose sur les edges"; exit 0 ;;
+              failed|error|canceled)
+                echo "::error::Job AWX $JOB_ID termine en '$status'"
+                curl -K "$WORK_DIR/curl.cfg" -f "$AWX_URL/api/v2/jobs/$JOB_ID/stdout/?format=txt" | tail -n 40 || true
+                exit 1 ;;
+              new|pending|waiting|running) errors=0 ;;
+              *) errors=$((errors + 1)); (( errors < 10 )) || { echo "::error::AWX ne repond plus pour le job $JOB_ID"; exit 1; } ;;
+            esac
+            (( $(date +%s) < deadline )) || { echo "::error::Job AWX $JOB_ID toujours '$status' apres 45 min, verifiez-le dans AWX"; exit 1; }
+            sleep 15
+          done
+
+      - name: Cancel AWX job if the workflow is cancelled
+        if: cancelled() && steps.launch.outputs.job_id != ''
+        env:
+          JOB_ID: ${{ steps.launch.outputs.job_id }}
+        run: curl -K "$WORK_DIR/curl.cfg" -X POST "$AWX_URL/api/v2/jobs/$JOB_ID/cancel/" -o /dev/null || true
+
+      - name: Clean work directory
+        if: always()
+        run: rm -rf "${WORK_DIR:?}"
