@@ -149,6 +149,8 @@ jobs:
   deploy_vault_conf:
     if: inputs.deploy_vault_conf == 'Yes'
     needs: [ calculate-project-version, calcul_job_awx, deploy_awx ]
+    # Environnement GitHub : donne acces aux secrets d'environnement (VAULT_ROLE_ID declare dans dev, prd...)
+    environment: ${{ inputs.environment }}
     runs-on: [ self-hosted, linux ]
     timeout-minutes: 60
     env:
@@ -161,9 +163,11 @@ jobs:
 
       - name: Render vault.conf from repository secrets
         env:
-          # AppRole de l'environnement cible s'il existe (VAULT_ROLE_ID_PRD...), sinon l'AppRole commun
-          VAULT_ROLE_ID: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID }}
-          VAULT_SECRET_ID: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID }}
+          # AppRole, par ordre de priorite : secret VAULT_ROLE_ID_<ENV>, secret VAULT_ROLE_ID (depot ou environnement
+          # GitHub), ancien nom APPROLE_ID ; le role_id, non confidentiel, peut aussi etre une variable VAULT_ROLE_ID.
+          VAULT_ROLE_ID: ${{ secrets[format('VAULT_ROLE_ID_{0}', inputs.environment)] || secrets.VAULT_ROLE_ID || secrets.APPROLE_ID || vars[format('VAULT_ROLE_ID_{0}', inputs.environment)] || vars.VAULT_ROLE_ID }}
+          VAULT_SECRET_ID: ${{ secrets[format('VAULT_SECRET_ID_{0}', inputs.environment)] || secrets.VAULT_SECRET_ID || secrets.APPROLE_SECRET }}
+          TARGET_ENV: ${{ inputs.environment }}
           TEMPLATE: conf/vault.conf.template
         run: |
           set -euo pipefail
@@ -171,7 +175,10 @@ jobs:
           mkdir -p "$WORK_DIR" && chmod 700 "$WORK_DIR"
           echo "WORK_DIR=$WORK_DIR" >> "$GITHUB_ENV"
           for v in VAULT_ROLE_ID VAULT_SECRET_ID; do
-            [[ -n "${!v}" ]] || { echo "::error::Secret $v (ou ${v}_<ENV>) absent du depot"; exit 1; }
+            if [[ -z "${!v}" ]]; then
+              echo "::error::$v vide : creez le secret $v (ou ${v}_$(tr "[:lower:]" "[:upper:]" <<< "$TARGET_ENV")) dans Settings > Secrets and variables > Actions > Secrets du depot, ou dans l'environnement GitHub $TARGET_ENV. Un secret d'organisation doit etre autorise pour ce depot."
+              exit 1
+            fi
             # Identifiants AppRole : caracteres sans signification HOCON, donc ecrits sans echappement
             [[ "${!v}" =~ ^[A-Za-z0-9._:/+=@-]+$ ]] || { echo "::error::$v contient des caracteres non autorises"; exit 1; }
             echo "::add-mask::${!v}"
