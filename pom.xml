@@ -281,6 +281,47 @@
             </plugin>
 
 -->
+            <!-- Fat jar (<artifactId>-<version>.jar) : dependances non provided incluses. Le pilote SQL Server est
+                 renomme : le cluster fournit un mssql-jdbc plus ancien, charge avant celui du jar sur les executeurs
+                 (NoSuchMethodError SQLServerBulkCopy.writeToServer(ISQLServerBulkData)). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.2.4</version>
+                <executions>
+                    <execution>
+                        <id>fat-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.microsoft.sqlserver</pattern>
+                                    <shadedPattern>com.bsy.datalake.reo.shaded.com.microsoft.sqlserver</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                                <!-- Signatures des jars d'origine (mssql-jdbc est signe), invalides apres le renommage -->
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Bundle zip (scripts et configuration), voir assembly/assembly.xml -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -290,9 +331,6 @@
                     <descriptors>
                         <descriptor>assembly/assembly.xml</descriptor>
                     </descriptors>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
                 </configuration>
                 <executions>
                     <execution>

@@ -1,11 +1,12 @@
 package com.bsy.datalake.reo.utility
 
 import com.bsy.datalake.reo.utility.ReoConstants.CONF_ROOT
-import com.microsoft.sqlserver.jdbc.{SQLServerBulkCopy, SQLServerBulkCopyOptions}
+import com.microsoft.sqlserver.jdbc.{SQLServerBulkCopy, SQLServerBulkCopyOptions, SQLServerDriver}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.slf4j.LoggerFactory
 
-import java.sql.{CallableStatement, Connection, DriverManager, ResultSet, Types}
+import java.sql.{CallableStatement, Connection, ResultSet, SQLException, Types}
+import java.util.Properties
 
 /** Retour d'une procedure stockee p_api_* : code retour (parametre 1) et message (parametre OUTPUT 2). */
 final case class ProcResult(returnCode: Option[Int], message: Option[String]) {
@@ -145,9 +146,7 @@ class JdbcMssqlGateway(sqlConf: MsSqlServerConf,
   require(sqlConf.schema.matches(Identifier), s"Schema SQL Server invalide : ${sqlConf.schema}")
 
   private def openConnection(): Connection = connect.map(_.apply()).getOrElse {
-    Class.forName(MsSqlServerConf.DRIVER)
-    DriverManager.setLoginTimeout(30)
-    val c = DriverManager.getConnection(sqlConf.getJdbcUrl, sqlConf.user, sqlConf.password)
+    val c = JdbcMssqlGateway.connect(sqlConf.getJdbcUrl, sqlConf.user, sqlConf.password)
     c.setAutoCommit(true)
     c
   }
@@ -256,9 +255,7 @@ class JdbcMssqlGateway(sqlConf: MsSqlServerConf,
 
     df.coalesce(settings.insertPartitions).rdd.foreachPartition { rows: Iterator[Row] =>
       if (rows.hasNext) {
-        Class.forName(MsSqlServerConf.DRIVER)
-        DriverManager.setLoginTimeout(30)
-        val connection = DriverManager.getConnection(url, user, password)
+        val connection = JdbcMssqlGateway.connect(url, user, password)
         val bulkCopy = new SQLServerBulkCopy(connection)
         try {
           connection.setAutoCommit(true)
@@ -286,6 +283,21 @@ object JdbcMssqlGateway {
   /** Types SQL Server numeriques : une chaine vide ou non numerique y est envoyee null. */
   val NumericTypes: Set[String] = Set("int", "bigint", "smallint", "tinyint", "decimal", "numeric", "money",
     "smallmoney", "float", "real")
+
+  /**
+   * Connexion par le pilote embarque dans le fat jar (mssql-jdbc 8.2.2, renomme par maven-shade), jamais par
+   * DriverManager : le cluster fournit un mssql-jdbc plus ancien, que DriverManager pourrait choisir, et dont
+   * SQLServerBulkCopy n'a pas writeToServer(ISQLServerBulkData) (NoSuchMethodError sur les executeurs).
+   */
+  def connect(url: String, user: String, password: String): Connection = {
+    val props = new Properties()
+    props.setProperty("user", user)
+    props.setProperty("password", password)
+    props.setProperty("loginTimeout", "30")
+    val connection = new SQLServerDriver().connect(url, props)
+    if (connection == null) throw new SQLException(s"URL JDBC refusee par le pilote SQL Server : $url")
+    connection
+  }
 
   /** Connexion de l'environnement, identifiants lus dans Vault au moment de la creation. */
   def fromConf(conf: ReoConf, vaultManager: VaultManager = VaultManagerProduction): MssqlGateway =
