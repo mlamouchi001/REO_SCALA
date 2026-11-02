@@ -32,16 +32,28 @@ class SparkIteratorBulkDataSpec extends AnyFlatSpec with Matchers {
     d.getColumnName(5) shouldBe "amount"
   }
 
-  it should "envoyer null pour les chaines vides, tronquer et convertir les chaines numeriques" in {
+  it should "garder les chaines vides vers une colonne caractere, null vers une colonne numerique ou date" in {
+    val sch = StructType(Seq(StructField("indicator", StringType), StructField("max_txt", StringType),
+      StructField("montant_txt", StringType), StructField("date_txt", StringType)))
+    val d = new SparkIteratorBulkData(Iterator(Row("", "  ", "", " ")), sch, Array(false, false, true, false),
+      Array(50, -1, 0, 0))
+    d.next() shouldBe true
+    d.getRowData.toSeq shouldBe Seq("", "  ", null, null)
+  }
+
+  it should "envoyer null pour les valeurs nulles, tronquer et convertir les chaines numeriques" in {
     val ts = Timestamp.valueOf("2026-04-15 00:00:00")
     val d = data(
       Row(1, "abcdefgh", " 12.50 ", new java.math.BigDecimal("1.5"), 2.0, ts),
-      Row(null, "  ", "x12", null, null, null))
+      Row(null, null, "x12", null, null, null),
+      Row(null, "  ", "  ", null, null, null))
     d.next() shouldBe true
     d.getRowData.toSeq shouldBe Seq(Integer.valueOf(1), "abcde", new java.math.BigDecimal("12.50"),
       new java.math.BigDecimal("1.5"), java.lang.Double.valueOf(2.0), ts)
     d.next() shouldBe true
     d.getRowData.toSeq shouldBe Seq.fill(6)(null)
+    d.next() shouldBe true
+    d.getRowData.toSeq shouldBe Seq(null, "  ", null, null, null, null)
     d.next() shouldBe false
     SparkIteratorBulkData.parseDecimal("abc") shouldBe null
   }

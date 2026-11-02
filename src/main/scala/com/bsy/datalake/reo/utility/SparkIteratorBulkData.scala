@@ -13,7 +13,9 @@ import java.util.{HashSet => JHashSet, Set => JSet}
  * @param rows             lignes de la partition
  * @param schema           schema Spark des lignes
  * @param targetIsNumeric  par colonne : colonne cible SQL Server numerique. Une chaine vide ou non numerique y est
- *                         envoyee null (sinon "Error converting data type varchar to numeric")
+ *                         envoyee null (sinon "Error converting data type varchar to numeric"). Vers une colonne
+ *                         caractere, une chaine vide reste vide (et non null, contrairement a PUSHSQLSERVER) : les
+ *                         jobs Talend inseraient "" dans des colonnes NOT NULL.
  * @param maxStringLengths par colonne : CHARACTER_MAXIMUM_LENGTH de la colonne cible (N > 0 : chaine tronquee a N
  *                         caracteres ; 0 : colonne non caractere ; -1 : varchar(max))
  *
@@ -100,10 +102,15 @@ class SparkIteratorBulkData(rows: Iterator[Row],
           fields(i).dataType match {
             case StringType =>
               val s = currentRow.getString(i)
-              if (s.trim.isEmpty) null
-              else if (targetIsNumeric(i)) SparkIteratorBulkData.parseDecimal(s.trim)
-              else {
-                val maxLen = maxStringLengths(i)
+              val maxLen = maxStringLengths(i)
+              if (targetIsNumeric(i)) {
+                if (s.trim.isEmpty) null else SparkIteratorBulkData.parseDecimal(s.trim)
+              } else if (maxLen == 0) {
+                // colonne cible ni caractere ni numerique (date...) : chaine vide -> null
+                if (s.trim.isEmpty) null else s
+              } else {
+                // colonne caractere : chaine envoyee telle quelle, vide compris, comme les tDBOutput Talend
+                // (colonnes NOT NULL de hdfs_import_ajustment_reo : indicator...)
                 if (maxLen > 0 && s.length > maxLen) s.substring(0, maxLen) else s
               }
             case IntegerType => java.lang.Integer.valueOf(currentRow.getInt(i))
